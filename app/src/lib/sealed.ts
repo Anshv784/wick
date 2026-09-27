@@ -53,7 +53,7 @@ async function mxePublicKey(wallet: AnchorWallet) {
  * Encrypts {side, amount} to the MXE and escrows `deposit`. The amount is clamped to the
  * deposit inside MPC; chain observers see only the deposit.
  */
-export async function placeSealedOrder(
+async function placeOnce(
   wallet: AnchorWallet,
   market: PublicKey,
   side: "yes" | "no",
@@ -89,6 +89,37 @@ export async function placeSealedOrder(
     })
     .instruction();
   return sendTx(baseConn, wallet, [ix]);
+}
+
+const BATCH_BUSY = 6004;
+
+/**
+ * Encrypts {side, amount} to the MXE and escrows `deposit`. The batch processes one order at a
+ * time (~2s per MPC round trip), so a busy batch is retried a few times before giving up.
+ */
+export async function placeSealedOrder(
+  wallet: AnchorWallet,
+  market: PublicKey,
+  side: "yes" | "no",
+  amountUsdc: number,
+  depositUsdc: number,
+) {
+  const batch = pdas.batch(market);
+  // Wait for the in-flight order (if any) to clear so the wallet isn't asked to sign twice.
+  for (let i = 0; i < 12; i++) {
+    const b = await sealedProgram(baseConn).account.sealedBatch.fetch(batch);
+    if (b.busySince.toNumber() === 0 || Date.now() / 1000 - b.busySince.toNumber() > 180) break;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await placeOnce(wallet, market, side, amountUsdc, depositUsdc);
+    } catch (e) {
+      const busy = String((e as Error).message).includes(`"Custom":${BATCH_BUSY}`);
+      if (!busy || attempt >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
 }
 
 export async function withdrawSealed(wallet: AnchorWallet, market: PublicKey) {

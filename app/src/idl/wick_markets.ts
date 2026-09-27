@@ -2189,6 +2189,13 @@ export type WickMarkets = {
             }
           },
           {
+            "name": "pythAccount",
+            "docs": [
+              "Pyth push-feed account (monotonic, latest price only) used for quotes and settlement."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "sbFeed",
             "docs": [
               "Switchboard canonical OracleQuote account for the feed hash."

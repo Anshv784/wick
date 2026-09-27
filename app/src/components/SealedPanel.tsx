@@ -14,7 +14,7 @@ import { AmountInput, Button, Row, Segmented } from "./ui";
 const hex = () => Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
 
 function stateName(s: object) {
-  return Object.keys(s)[0] as "initializing" | "open" | "revealing" | "revealed";
+  return Object.keys(s)[0] as "initializing" | "open" | "revealing" | "revealed" | "cancelled";
 }
 
 export function SealedPanel({ k }: { k: PublicKey }) {
@@ -80,6 +80,17 @@ export function SealedPanel({ k }: { k: PublicKey }) {
         <Stat k="Escrowed" v={`$${fmtNum(b.escrowed.toNumber() / 1e6, 0)}`} />
       </div>
 
+      {st === "open" && b.orderCount < 3 && (
+        <p className="rounded-lg bg-ink px-3 py-2 text-[11px] leading-relaxed text-muted">
+          {3 - b.orderCount} more order{3 - b.orderCount === 1 ? "" : "s"} needed before totals can be revealed. Smaller batches are
+          refunded in full and nothing is revealed.
+        </p>
+      )}
+      {st === "cancelled" && (
+        <p className="rounded-lg border border-violet/30 bg-violet/5 px-3 py-2 text-[12px] text-muted">
+          Too few orders to reveal without exposing them, so nothing was revealed and every deposit is refundable.
+        </p>
+      )}
       {st === "revealed" && (
         <div className="rounded-xl border border-violet/30 bg-violet/5 p-3.5">
           <div className="text-[11px] tracking-wide text-violet uppercase">Revealed totals only</div>
@@ -98,7 +109,7 @@ export function SealedPanel({ k }: { k: PublicKey }) {
           <Row k="Deposit (public)" v={`$${fmtNum(o.deposit.toNumber() / 1e6)}`} />
           <Row k="Side & size" v="🔒 encrypted" cls="text-violet" />
           {oState === "settled" && <Row k="Payout" v={`$${fmtNum(o.payout.toNumber() / 1e6)}`} cls="text-yes" />}
-          {oState === "settled" && (
+          {(oState === "settled" || (st === "cancelled" && oState === "placed")) && (
             <div className="mt-2">
               <Button
                 tone="violet"
@@ -112,7 +123,7 @@ export function SealedPanel({ k }: { k: PublicKey }) {
                   }
                 }}
               >
-                Withdraw payout
+                {st === "cancelled" ? "Withdraw refund" : "Withdraw payout"}
               </Button>
             </div>
           )}

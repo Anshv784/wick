@@ -7,6 +7,7 @@ import deployment from "@/deployment.json";
 import {
   ata,
   baseConn,
+  erConn,
   BookAccount,
   fetchMarket,
   fetchPosition,
@@ -46,19 +47,56 @@ export function usePoll<T>(load: () => Promise<T>, ms: number, deps: unknown[]) 
   return { data, refresh, loading };
 }
 
+/**
+ * Keeps a delegated account live over the ER websocket (trades land in ~1s, so polling
+ * alone would lag). Falls back to the poll for base-layer accounts.
+ */
+function useErStream<T>(
+  key: PublicKey | undefined,
+  located: Located<T> | null | undefined,
+  name: "market" | "position",
+  set: (v: Located<T>) => void,
+) {
+  const onEr = !!located?.onEr;
+  useEffect(() => {
+    if (!key || !onEr) return;
+    const coder = marketsProgram(erConn).coder.accounts;
+    const id = erConn.onAccountChange(key, (info) => {
+      try {
+        set({ data: coder.decode(name, info.data) as T, onEr: true });
+      } catch {}
+    });
+    return () => {
+      erConn.removeAccountChangeListener(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key?.toBase58(), onEr, name]);
+}
+
 export function useMarket(key: PublicKey | undefined) {
-  return usePoll<Located<MarketAccount> | null>(
+  const poll = usePoll<Located<MarketAccount> | null>(
     async () => (key ? fetchMarket(key) : null),
-    2500,
+    4000,
     [key?.toBase58()],
   );
+  const [live, setLive] = useState<Located<MarketAccount>>();
+  useEffect(() => setLive(undefined), [poll.data]);
+  useErStream(key, poll.data, "market", setLive);
+  return { ...poll, data: live ?? poll.data };
 }
 
 export function useMarkets() {
   return usePoll(
     async () => {
-      const rows = await Promise.all(MARKET_KEYS.map(async (k) => ({ key: k, m: await fetchMarket(k) })));
-      return rows.filter((r) => r.m) as { key: PublicKey; m: Located<MarketAccount> }[];
+      const rows = await Promise.all(
+        MARKET_KEYS.map(async (k) => ({ key: k, m: await fetchMarket(k).catch(() => null) })),
+      );
+      const now = Date.now() / 1000;
+      const live = (m: MarketAccount) => "open" in (m.status as object) && m.expiry.toNumber() > now;
+      return (rows.filter((r) => r.m) as { key: PublicKey; m: Located<MarketAccount> }[]).sort(
+        (a, b) =>
+          Number(live(b.m.data)) - Number(live(a.m.data)) || a.m.data.expiry.toNumber() - b.m.data.expiry.toNumber(),
+      );
     },
     5000,
     [],
@@ -67,11 +105,16 @@ export function useMarkets() {
 
 export function usePosition(market: PublicKey | undefined) {
   const wallet = useAnchorWallet();
-  return usePoll<Located<PositionAccount> | null>(
-    async () => (market && wallet ? fetchPosition(pdas.position(market, wallet.publicKey)) : null),
-    2500,
-    [market?.toBase58(), wallet?.publicKey.toBase58()],
+  const key = market && wallet ? pdas.position(market, wallet.publicKey) : undefined;
+  const poll = usePoll<Located<PositionAccount> | null>(
+    async () => (key ? fetchPosition(key) : null),
+    4000,
+    [key?.toBase58()],
   );
+  const [live, setLive] = useState<Located<PositionAccount>>();
+  useEffect(() => setLive(undefined), [poll.data]);
+  useErStream(key, poll.data, "position", setLive);
+  return { ...poll, data: live ?? poll.data };
 }
 
 export function useBook(market: PublicKey | undefined) {

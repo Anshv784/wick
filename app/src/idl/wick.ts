@@ -1274,6 +1274,11 @@ export type Wick = {
       "code": 6006,
       "name": "marketNotResolved",
       "msg": "Market is not resolved"
+    },
+    {
+      "code": 6007,
+      "name": "unauthorized",
+      "msg": "Only the market creator can open its sealed batch"
     }
   ],
   "types": [
@@ -1363,6 +1368,9 @@ export type Wick = {
           },
           {
             "name": "revealed"
+          },
+          {
+            "name": "cancelled"
           }
         ]
       }
@@ -2342,6 +2350,13 @@ export type Wick = {
               "Non-zero while a place_order computation is in flight (serialises updates)."
             ],
             "type": "i64"
+          },
+          {
+            "name": "pendingOrder",
+            "docs": [
+              "The order whose computation holds the lock; only its callback may update totals."
+            ],
+            "type": "pubkey"
           },
           {
             "name": "orderCount",

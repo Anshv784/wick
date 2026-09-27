@@ -7,11 +7,15 @@ pub const SHARE_UNIT: u64 = 1_000_000;
 
 pub const BPS: u64 = 10_000;
 /// Oracle prints used for settlement must land within this window after expiry.
-pub const SETTLE_WINDOW_SECS: i64 = 600;
+/// Settlement prints must land within this window after expiry. Kept short so a settler
+/// cannot shop for a favourable print; the keeper refreshes both feeds every few seconds.
+pub const SETTLE_WINDOW_SECS: i64 = 120;
+/// Unconfirmed touch tickets can be expired this long after the market closes.
+pub const TOUCH_GRACE_SECS: i64 = 600;
 /// A frozen or unsettled market can be voided (50/50 redemption) after this delay.
 pub const VOID_DELAY_SECS: i64 = 86_400;
 /// Max staleness of a spot price used to quote a touch ticket.
-pub const QUOTE_MAX_AGE_SECS: u64 = 60;
+pub const QUOTE_MAX_AGE_SECS: u64 = 30;
 /// Pyth and Switchboard prints confirming a touch must be this close in time.
 pub const TOUCH_SYNC_SECS: i64 = 30;
 
@@ -41,6 +45,8 @@ pub enum Side {
 pub struct OracleSpec {
     /// Pyth price feed id (hex feed id, 32 bytes).
     pub pyth_feed_id: [u8; 32],
+    /// Pyth push-feed account (monotonic, latest price only) used for quotes and settlement.
+    pub pyth_account: Pubkey,
     /// Switchboard canonical OracleQuote account for the feed hash.
     pub sb_feed: Pubkey,
     /// Max relative gap between the two oracles before they are treated as disagreeing.

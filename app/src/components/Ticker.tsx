@@ -13,6 +13,8 @@ function Item({ s }: { s: AssetSymbol }) {
     if (!t) return;
     if (prev.current != null && t.price !== prev.current) setDir(t.price > prev.current ? 1 : -1);
     prev.current = t.price;
+    const id = setTimeout(() => setDir(0), 700);
+    return () => clearTimeout(id);
   }, [t]);
   return (
     <div className="flex items-center gap-2.5">

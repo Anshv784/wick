@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { MarketCard } from "@/components/MarketCard";
 import { Ticker } from "@/components/Ticker";
+import { HeroWick } from "@/components/HeroWick";
 import { useMarkets } from "@/lib/hooks";
 
 const pillars = [
@@ -31,6 +32,9 @@ export default function Home() {
   return (
     <div>
       <section className="relative pt-16 pb-12 sm:pt-24">
+        <div className="pointer-events-none absolute top-24 right-0 hidden xl:block">
+          <HeroWick />
+        </div>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

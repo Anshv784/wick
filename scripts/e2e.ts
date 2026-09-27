@@ -62,7 +62,12 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
 
   // 2. Touch ticket (base layer), priced off the Pyth push feed.
   const book = PublicKey.findProgramAddressSync([Buffer.from("touch_book"), market.toBuffer()], mk.programId)[0];
-  const spot = m.strike.toNumber() / 1e8;
+  // Spot from the pinned Pyth push feed (PriceUpdateV2: disc 8, authority 32, verification 1-2, feed id 32, price i64, conf u64, expo i32).
+  const acc = (await conn.getAccountInfo(new PublicKey(d.oracles.SOL.pythAccount)))!.data;
+  let off = 8 + 32;
+  off += acc[off] === 1 ? 1 : 2;
+  off += 32;
+  const spot = Number(acc.readBigInt64LE(off)) * 10 ** acc.readInt32LE(off + 16);
   await send(conn, [
     await mk.methods.buyTicket({ kind: { up: {} }, barrier: new BN(Math.round(spot * (1 + Number(process.env.TOUCH_PCT ?? 1) / 100) * 1e8)), barrier2: new BN(0), stake: new BN(5_000_000), maxPriceBps: 9_500 })
       .accountsPartial({ owner: user.publicKey, book, mint, ownerToken: ata, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount) })
@@ -78,7 +83,7 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
   const priv = x25519.utils.randomSecretKey();
   const cipher = new RescueCipher(x25519.getSharedSecret(priv, mxeKey!));
   const nonce = randomBytes(16);
-  const [sideCt, amtCt] = cipher.encrypt([1n, 15_000_000n], nonce);
+  const [sideCt, amtCt] = cipher.encrypt([process.env.SEALED_SIDE === "no" ? 0n : 1n, 15_000_000n], nonce);
   const offset = randomOffset();
   await sl.methods
     .placeOrder(offset, Array.from(sideCt), Array.from(amtCt), Array.from(x25519.getPublicKey(priv)), new BN(Buffer.from(nonce).reverse()), new BN(25_000_000))

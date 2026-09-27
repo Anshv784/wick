@@ -1268,6 +1268,11 @@
       "code": 6006,
       "name": "MarketNotResolved",
       "msg": "Market is not resolved"
+    },
+    {
+      "code": 6007,
+      "name": "Unauthorized",
+      "msg": "Only the market creator can open its sealed batch"
     }
   ],
   "types": [
@@ -1357,6 +1362,9 @@
           },
           {
             "name": "Revealed"
+          },
+          {
+            "name": "Cancelled"
           }
         ]
       }
@@ -2336,6 +2344,13 @@
               "Non-zero while a place_order computation is in flight (serialises updates)."
             ],
             "type": "i64"
+          },
+          {
+            "name": "pending_order",
+            "docs": [
+              "The order whose computation holds the lock; only its callback may update totals."
+            ],
+            "type": "pubkey"
           },
           {
             "name": "order_count",

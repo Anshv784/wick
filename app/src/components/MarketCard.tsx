@@ -9,7 +9,7 @@ import { useNow } from "@/lib/hooks";
 import { yesBps } from "@/lib/pricing";
 import { useLivePrice } from "@/lib/prices";
 import type { Located, MarketAccount } from "@/lib/wick";
-import { StatusPill } from "./StatusPill";
+import { marketStatus, StatusPill } from "./StatusPill";
 
 export function marketQuestion(m: MarketAccount) {
   const a = assetFromBytes(m.symbol);
@@ -26,6 +26,8 @@ export function MarketCard({ k, m, i }: { k: PublicKey; m: Located<MarketAccount
   const yes = yesBps(m.data.yesReserve.toNumber(), m.data.noReserve.toNumber());
   const left = m.data.expiry.toNumber() - now;
   const dist = spot ? ((spot.price - q.strike) / q.strike) * 100 : null;
+  const resolved = marketStatus(m.data) !== "open";
+  const finalPrint = m.data.settlePyth.toNumber() / PRICE_SCALE;
 
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
@@ -59,12 +61,19 @@ export function MarketCard({ k, m, i }: { k: PublicKey; m: Located<MarketAccount
             </div>
             <div className="mt-1 text-[11px] tracking-wide text-muted uppercase">chance YES</div>
           </div>
-          <div className="text-right">
-            <div className="num text-[15px]">{spot ? fmtUsd(spot.price) : "—"}</div>
-            <div className={`num text-[11px] ${dist == null ? "text-muted" : dist >= 0 ? "text-yes" : "text-no"}`}>
-              {dist == null ? "spot" : `${dist >= 0 ? "+" : ""}${dist.toFixed(2)}% vs strike`}
+          {resolved ? (
+            <div className="text-right">
+              <div className="num text-[15px]">{finalPrint ? fmtUsd(finalPrint) : "—"}</div>
+              <div className="text-[11px] text-muted">final print · Pyth ∧ Switchboard</div>
             </div>
-          </div>
+          ) : (
+            <div className="text-right">
+              <div className="num text-[15px]">{spot ? fmtUsd(spot.price) : "—"}</div>
+              <div className={`num text-[11px] ${dist == null ? "text-muted" : dist >= 0 ? "text-yes" : "text-no"}`}>
+                {dist == null ? "spot" : `${dist >= 0 ? "+" : ""}${dist.toFixed(2)}% vs strike`}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex h-1.5 overflow-hidden rounded-full bg-no/25">

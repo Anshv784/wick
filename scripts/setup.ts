@@ -171,6 +171,7 @@ async function createMarkets(d: Deployment) {
         symbol,
         oracle: {
           pythFeedId: Array.from(Buffer.from(a.pythFeedId, "hex")),
+          pythAccount: new PublicKey(d.oracles[p.symbol].pythAccount),
           sbFeed: new PublicKey(d.oracles[p.symbol].sbQuote),
           maxDevBps: 50,
         },

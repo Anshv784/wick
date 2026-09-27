@@ -19,6 +19,9 @@ pub const SEED_ORDER: &[u8] = b"order";
 /// A computation that never called back releases the batch lock after this long.
 const LOCK_TIMEOUT_SECS: i64 = 180;
 const MIN_DEPOSIT: u64 = 100_000;
+/// Totals are only revealed with at least this many orders; below it, revealing the totals
+/// would leak individual sides and sizes, so the batch is cancelled and fully refunded.
+const MIN_REVEAL_ORDERS: u32 = 3;
 
 declare_id!("8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT");
 
@@ -60,6 +63,7 @@ pub mod wick {
         let now = Clock::get()?.unix_timestamp;
         require!(close_ts > now && close_ts <= market.expiry, SealedError::InvalidParams);
         require_keys_eq!(market.mint, ctx.accounts.mint.key(), SealedError::InvalidParams);
+        require_keys_eq!(market.creator, ctx.accounts.payer.key(), SealedError::Unauthorized);
 
         let b = &mut ctx.accounts.batch;
         b.market = ctx.accounts.market.key();
@@ -128,7 +132,7 @@ pub mod wick {
         );
         require!(deposit >= MIN_DEPOSIT, SealedError::InvalidParams);
         b.busy_since = now;
-        b.order_count += 1;
+        b.pending_order = ctx.accounts.order.key();
         b.escrowed += deposit;
 
         token::transfer(
@@ -196,10 +200,18 @@ pub mod wick {
             Err(_) => return Err(SealedError::AbortedComputation.into()),
         };
         let b = &mut ctx.accounts.batch;
+        let ord = &mut ctx.accounts.order;
+        // A callback that arrives after its lock was taken over (or the order was cancelled)
+        // was computed from stale totals; drop it.
+        require!(
+            b.state == BatchState::Open && b.pending_order == ord.key() && ord.state == OrderState::Pending,
+            SealedError::OrderState
+        );
         b.totals_ct = o.field_0.ciphertexts;
         b.totals_nonce = o.field_0.nonce;
         b.busy_since = 0;
-        let ord = &mut ctx.accounts.order;
+        b.pending_order = Pubkey::default();
+        b.order_count += 1;
         ord.order_ct = o.field_1.ciphertexts;
         ord.order_nonce = o.field_1.nonce;
         ord.state = OrderState::Placed;
@@ -214,8 +226,14 @@ pub mod wick {
         let b = &mut ctx.accounts.batch;
         let o = &mut ctx.accounts.order;
         require!(o.state == OrderState::Pending, SealedError::OrderState);
-        require!(now > b.busy_since + LOCK_TIMEOUT_SECS, SealedError::BatchBusy);
-        b.busy_since = 0;
+        require!(
+            b.pending_order != o.key() || now > b.busy_since + LOCK_TIMEOUT_SECS,
+            SealedError::BatchBusy
+        );
+        if b.pending_order == o.key() {
+            b.busy_since = 0;
+            b.pending_order = Pubkey::default();
+        }
         b.escrowed -= o.deposit;
         o.state = OrderState::Paid;
         o.payout = o.deposit;
@@ -237,6 +255,11 @@ pub mod wick {
             b.busy_since == 0 || now > b.busy_since + LOCK_TIMEOUT_SECS,
             SealedError::BatchBusy
         );
+        if b.order_count < MIN_REVEAL_ORDERS {
+            b.state = BatchState::Cancelled;
+            emit!(BatchRevealed { batch: b.key(), yes_total: 0, no_total: 0 });
+            return Ok(());
+        }
         b.state = BatchState::Revealing;
         let args = ArgBuilder::new()
             .plaintext_u128(b.totals_nonce)
@@ -274,6 +297,7 @@ pub mod wick {
             Err(_) => return Err(SealedError::AbortedComputation.into()),
         };
         let b = &mut ctx.accounts.batch;
+        require!(b.state == BatchState::Revealing, SealedError::BatchOpen);
         b.yes_total = o.field_0;
         b.no_total = o.field_1;
         b.state = BatchState::Revealed;
@@ -340,14 +364,20 @@ pub mod wick {
             Err(_) => return Err(SealedError::AbortedComputation.into()),
         };
         let ord = &mut ctx.accounts.order;
+        require!(ord.state == OrderState::Settling, SealedError::OrderState);
         ord.payout = payout;
         ord.state = OrderState::Settled;
         Ok(())
     }
 
     pub fn withdraw_payout(ctx: Context<WithdrawPayout>) -> Result<()> {
+        let cancelled = ctx.accounts.batch.state == BatchState::Cancelled;
         let o = &mut ctx.accounts.order;
-        require!(o.state == OrderState::Settled, SealedError::OrderState);
+        if cancelled && o.state == OrderState::Placed {
+            o.payout = o.deposit;
+        } else {
+            require!(o.state == OrderState::Settled, SealedError::OrderState);
+        }
         o.state = OrderState::Paid;
         let amount = o.payout;
         pay_out(
@@ -406,6 +436,8 @@ pub enum BatchState {
     Open,
     Revealing,
     Revealed,
+    /// Too few orders to reveal without leaking them; every order is refunded in full.
+    Cancelled,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
@@ -429,6 +461,8 @@ pub struct SealedBatch {
     pub state: BatchState,
     /// Non-zero while a place_order computation is in flight (serialises updates).
     pub busy_since: i64,
+    /// The order whose computation holds the lock; only its callback may update totals.
+    pub pending_order: Pubkey,
     pub order_count: u32,
     pub escrowed: u64,
     pub yes_total: u64,
@@ -821,4 +855,6 @@ pub enum SealedError {
     OrderState,
     #[msg("Market is not resolved")]
     MarketNotResolved,
+    #[msg("Only the market creator can open its sealed batch")]
+    Unauthorized,
 }

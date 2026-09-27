@@ -29,6 +29,13 @@ fn rescale(value: i128, expo: i32) -> Result<i64> {
     i64::try_from(v).map_err(|_| WickError::MathOverflow.into())
 }
 
+/// Reads the market's own Pyth push feed. Used where the caller must not be able to pick
+/// which historical print is used (ticket quotes, settlement).
+pub fn read_pyth_pinned(update: &Account<PriceUpdateV2>, spec: &OracleSpec) -> Result<Print> {
+    require_keys_eq!(update.key(), spec.pyth_account, WickError::OracleMismatch);
+    read_pyth(update, spec)
+}
+
 pub fn read_pyth(update: &PriceUpdateV2, spec: &OracleSpec) -> Result<Print> {
     require!(
         update.verification_level == VerificationLevel::Full,
@@ -99,4 +106,34 @@ pub fn gap_bps(a: i64, b: i64) -> u64 {
 
 pub fn within(p: &Print, lo: i64, hi: i64) -> bool {
     p.ts >= lo && p.ts <= hi
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A real SOL/USD canonical quote account captured from devnet.
+    const SOL_QUOTE: &[u8] = include_bytes!("../fixtures/sb_quote_sol.bin");
+
+    #[test]
+    fn parses_real_quote_account() {
+        let (value, slot) = parse_quote(SOL_QUOTE).expect("parse");
+        let price = rescale(value, -(PRECISION as i32)).unwrap();
+        assert!(price > 50 * 10i64.pow(PRICE_DECIMALS) && price < 500 * 10i64.pow(PRICE_DECIMALS), "price={price}");
+        assert!(slot > 500_000_000);
+    }
+
+    #[test]
+    fn rejects_tampered_quote() {
+        let mut bad = SOL_QUOTE.to_vec();
+        bad[0] ^= 0xff;
+        assert!(parse_quote(&bad).is_none());
+        assert!(parse_quote(&SOL_QUOTE[..100]).is_none());
+    }
+
+    #[test]
+    fn gap_is_relative_to_lower_print() {
+        assert_eq!(gap_bps(100_00000000, 101_00000000), 100);
+        assert_eq!(gap_bps(101_00000000, 100_00000000), 100);
+    }
 }

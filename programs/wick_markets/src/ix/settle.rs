@@ -1,5 +1,5 @@
 use crate::error::WickError;
-use crate::oracle::{gap_bps, read_pyth, read_switchboard, within};
+use crate::oracle::{gap_bps, read_pyth_pinned, read_switchboard, within};
 use crate::state::*;
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
@@ -21,7 +21,7 @@ pub fn settle_market(ctx: Context<Settle>) -> Result<()> {
     require!(m.status == MarketStatus::Open, WickError::MarketNotOpen);
     require!(now >= m.expiry, WickError::NotExpired);
 
-    let p = read_pyth(&ctx.accounts.price_update, &m.oracle)?;
+    let p = read_pyth_pinned(&ctx.accounts.price_update, &m.oracle)?;
     let s = read_switchboard(&ctx.accounts.sb_feed, &m.oracle, &Clock::get()?)?;
     let (lo, hi) = (m.expiry, m.expiry + SETTLE_WINDOW_SECS);
     require!(within(&p, lo, hi) && within(&s, lo, hi), WickError::OracleStale);

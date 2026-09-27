@@ -25,7 +25,8 @@ import { refreshAll } from "./oracles";
 import { arciumAccounts, randomOffset } from "./setup";
 
 const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
-const SETTLE_WINDOW = 600;
+const SETTLE_WINDOW = 120;
+const TOUCH_GRACE = 600;
 const VOID_DELAY = 86_400;
 const TICK_MS = Number(process.env.TICK_MS ?? 8_000);
 
@@ -53,15 +54,15 @@ async function isDelegated(k: PublicKey) {
 }
 
 async function confirmTouches() {
-  const books = await markets.account.touchBook.all();
-  const tickets = await markets.account.touchTicket.all();
+  const books = await markets.account.touchBook.all([{ dataSize: markets.account.touchBook.size }]);
+  const tickets = await markets.account.touchTicket.all([{ dataSize: markets.account.touchTicket.size }]);
   for (const { publicKey: ticket, account: t } of tickets) {
     if (key(t.status) !== "open") continue;
     const book = books.find((b) => b.publicKey.equals(t.book));
     if (!book) continue;
     const symbol = ASSETS.find((a) => Buffer.from(a.pythFeedId, "hex").equals(Buffer.from(book.account.oracle.pythFeedId)))?.symbol;
     if (!symbol) continue;
-    if (now() > book.account.expiry.toNumber() + SETTLE_WINDOW) {
+    if (now() > book.account.expiry.toNumber() + TOUCH_GRACE) {
       const ix = await markets.methods.expireTicket().accountsPartial({ book: t.book, ticket }).instruction();
       await trySend([ix], `expired ticket ${ticket.toBase58().slice(0, 6)}`);
       continue;
@@ -126,7 +127,8 @@ async function settleMarkets() {
 }
 
 async function crankSealed() {
-  const batches = await sealed.account.sealedBatch.all();
+  // Size filters skip accounts left over from earlier program layouts.
+  const batches = await sealed.account.sealedBatch.all([{ dataSize: sealed.account.sealedBatch.size }]);
   for (const { publicKey: batch, account: b } of batches) {
     const st = key(b.state);
     if (st === "open" && now() >= b.closeTs.toNumber() && b.busySince.toNumber() === 0) {

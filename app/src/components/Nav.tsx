@@ -14,7 +14,7 @@ const WalletMultiButton = dynamic(
 const links = [
   { href: "/", label: "Markets" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/how", label: "How it settles" },
+  { href: "/docs", label: "Docs" },
 ];
 
 export function Nav() {
@@ -48,6 +48,20 @@ export function Nav() {
           <WalletMultiButton />
         </div>
       </div>
+      <nav className="flex gap-1 overflow-x-auto border-t hairline px-4 py-2 md:hidden">
+        {links.map((l) => {
+          const active = l.href === "/" ? path === "/" || path.startsWith("/market") : path.startsWith(l.href);
+          return (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={`rounded-full px-3 py-1 text-[12px] ${active ? "bg-ink-3 text-paper" : "text-muted"}`}
+            >
+              {l.label}
+            </Link>
+          );
+        })}
+      </nav>
     </header>
   );
 }

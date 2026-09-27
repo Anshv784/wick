@@ -1,6 +1,6 @@
 use crate::error::WickError;
 use crate::math::{payout_for, touch_fair_bps, touch_quote_bps};
-use crate::oracle::{gap_bps, read_pyth, read_switchboard, Print};
+use crate::oracle::{gap_bps, read_pyth, read_pyth_pinned, read_switchboard, Print};
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -46,9 +46,9 @@ pub fn buy_ticket(ctx: Context<BuyTicket>, args: BuyTicketArgs) -> Result<()> {
     require!(now + 60 < book.expiry, WickError::Expired);
     require!(args.stake >= SHARE_UNIT / 10, WickError::InvalidParams);
 
-    let spot = read_pyth(&ctx.accounts.price_update, &book.oracle)?;
+    let spot = read_pyth_pinned(&ctx.accounts.price_update, &book.oracle)?;
     require!(
-        now - spot.ts <= QUOTE_MAX_AGE_SECS as i64,
+        (0..=QUOTE_MAX_AGE_SECS as i64).contains(&(now - spot.ts)),
         WickError::OracleStale
     );
 
@@ -145,7 +145,9 @@ fn judge(t: &TouchTicket, a: i64, b: i64) -> Option<Verdict> {
 }
 
 /// Permissionless. A touch counts only when Pyth and Switchboard both print through the
-/// level, close together in time, after the ticket was bought and before expiry.
+/// level, close together in time, after the ticket was bought and before expiry. Any
+/// Wormhole-verified Pyth print is accepted here (not just the push feed) so a short wick
+/// between keeper cranks can still be proven; the canonical Switchboard quote must agree.
 pub fn confirm_touch(ctx: Context<ConfirmTouch>) -> Result<()> {
     let book = &mut ctx.accounts.book;
     let t = &mut ctx.accounts.ticket;
@@ -201,7 +203,7 @@ pub fn expire_ticket(ctx: Context<ExpireTicket>) -> Result<()> {
     let t = &mut ctx.accounts.ticket;
     require!(t.status == TicketStatus::Open, WickError::TicketState);
     require!(
-        Clock::get()?.unix_timestamp > book.expiry + SETTLE_WINDOW_SECS,
+        Clock::get()?.unix_timestamp > book.expiry + TOUCH_GRACE_SECS,
         WickError::NotExpired
     );
     t.status = TicketStatus::Lost;

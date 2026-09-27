@@ -20,9 +20,10 @@ export const ARCHITECTURE = `flowchart LR
 
 export const LIFECYCLE = `stateDiagram-v2
   [*] --> Open: create_market + touch book + sealed batch
-  Open --> OnER: delegate_market
-  OnER --> OnER: buy / sell
-  OnER --> Expired: expiry passes
+  state "Trading on MagicBlock" as ER
+  Open --> ER: delegate_market
+  ER --> ER: buy / sell
+  ER --> Expired: expiry passes
   Expired --> Open: commit + undelegate
   Open --> Settled: both oracles agree
   Open --> Frozen: oracles disagree

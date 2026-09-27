@@ -1,63 +1,184 @@
-# Wick
+<div align="center">
 
-**Trade the wick, not just the close.** Wick is a set of prediction markets on Solana with three ways to take a view, and settlement that pays out only when two independent oracles agree.
+# 🕯️ Wick
 
-| | What | Runs on |
-|---|---|---|
-| **Instant** | Buy/sell YES·NO against an FPMM pool, with ~1s confirmations and no gas | MagicBlock ephemeral rollup |
-| **Touch** | "Does SOL trade through $125 before expiry?" Pays the moment the level prints | Solana, house-backed |
-| **Sealed** | Encrypted side and size, cleared at one price. Only batch totals are revealed | Arcium MPC |
+**Trade the wick, not just the close.**
 
-Each market asks a question like *"SOL ≥ $123 at Fri 17:00?"*
+Prediction markets on Solana with instant trading on MagicBlock, touch bets on the price path, and sealed Arcium batches.
+Every payout requires **Pyth and Switchboard to agree**.
 
-## Why it's trustworthy
+</div>
 
-- **Dual-oracle settlement.** Settlement reads a Pyth price update (Wormhole-verified) and a Switchboard oracle quote (Ed25519-verified, built from Coinbase, Kraken and Bitstamp, so it's independent of Pyth) inside the same instruction. Both prints must land within 10 minutes after expiry, fall on the same side of the strike, and sit within the market's max gap. **If any check fails, the market freezes** instead of guessing.
-- **Frozen markets can't get stuck.** After 24h anyone can void a frozen market, and every share then redeems at 0.50. The vault covers this exactly, because every dollar that comes in mints exactly one YES share and one NO share.
-- **Touches need both oracles too.** A touch ticket wins only when both oracles print through the level within 30s of each other, after purchase and before expiry.
-- **The house can't be drained.** Buying a ticket locks its full payout in the house vault, so a ticket that can't be backed can't be bought.
-- **Sealed is really sealed.** Orders are encrypted to the Arcium MXE, and the cluster keeps running totals under encryption. At close only `YES_total` and `NO_total` are revealed. Everyone fills at `YES_total / (YES_total + NO_total)`. Individual payouts are computed in MPC and revealed only after the market resolves.
+![Wick markets](docs/screens/home.jpg)
 
-## Architecture
+## What it is
+
+Every Wick market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* You can take that view three ways:
+
+| | Mode | What you're betting on | Runs on |
+|---|---|---|---|
+| ⚡ | **Instant** | YES/NO shares against an FPMM pool. Buy and sell anytime, ~1s, no gas | MagicBlock ephemeral rollup |
+| 🔥 | **Touch** | *"Does SOL trade through $125 before expiry?"* Pays the moment it happens | Solana, backed by a house vault |
+| 🔒 | **Sealed** | Encrypted side and size, filled at one clearing price. Nobody sees your order | Arcium MPC |
+
+| Touch bets and the live chart | Sealed batch |
+|---|---|
+| ![Market](docs/screens/market.jpg) | ![Sealed](docs/screens/sealed.jpg) |
+
+## How it works
+
+```mermaid
+flowchart LR
+  U([Trader]) --> APP[Next.js app]
+  APP -- "buy / sell (~1s, no gas)" --> ER[(MagicBlock ER)]
+  APP -- "deposit · touch · claim" --> MK
+  APP -- "encrypted order" --> SB
+  subgraph Solana devnet
+    MK[wick_markets<br/>pool · touch book · settle]
+    SB[wick sealed batch<br/>Arcium MXE]
+  end
+  ER <-- "delegate / commit + undelegate" --> MK
+  SB -- "queue computation" --> ARX{{Arcium cluster}}
+  ARX -- "signed callback" --> SB
+  SB -. "reads outcome" .-> MK
+  PY[(Pyth push feed)] --> MK
+  SW[(Switchboard quote)] --> MK
+  K[[Keeper]] -- "price cranks" --> PY & SW
+  K -- "confirm · settle · reveal" --> MK & SB
+```
+
+- **`wick_markets`** (Anchor) holds markets, the FPMM pool, touch books, dual-oracle settlement, and MagicBlock delegation.
+- **`wick`** (Arcium MXE) runs the sealed batch and reads each market's outcome from `wick_markets`.
+- **The keeper** refreshes both oracles and runs every permissionless crank: confirming touches, undelegating, settling, revealing, and paying sealed orders. Anyone can run these; the keeper just saves users the clicks.
+
+### Market lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> Open: create market + touch book + sealed batch
+  state "Trading on MagicBlock" as ER
+  Open --> ER: delegate
+  ER --> ER: buy / sell
+  ER --> Expired: expiry passes
+  Expired --> Open: commit + undelegate
+  Open --> Settled: both oracles agree
+  Open --> Frozen: oracles disagree
+  Frozen --> Voided: 24h later
+  Settled --> [*]: claim 1.00 per winning share
+  Voided --> [*]: claim 0.50 per share
+```
+
+### Dual-oracle settlement
+
+```mermaid
+flowchart LR
+  A[settle after expiry] --> B{Pinned Pyth<br/>push feed?}
+  B -- no --> X[reject]
+  B -- yes --> C{Both prints within<br/>expiry + 120s?}
+  C -- no --> X
+  C -- yes --> D{Same side<br/>of strike?}
+  D -- no --> F[❄ Frozen]
+  D -- yes --> E{Gap ≤ max?}
+  E -- no --> F
+  E -- yes --> S[✓ Settled]
+  F -- 24h --> V[Voided · 0.50/share]
+```
+
+**Pyth** is a Wormhole-verified push feed. **Switchboard** is an Ed25519-verified oracle quote built only from Coinbase, Kraken and Bitstamp, so it doesn't depend on Pyth. If they disagree, the market **freezes** instead of paying the wrong side.
+
+### Touch bets
+
+A ticket's price is the driftless one-touch probability plus a house edge:
 
 ```
-programs/wick_markets   Anchor program: markets, FPMM pool, touch book, dual-oracle settle, ER delegation
-programs/wick           Arcium MXE program: sealed batch (init_totals, place_order, reveal_totals, settle_order)
-encrypted-ixs           Arcis circuits for the sealed batch
-scripts/                setup (mint, oracles, comp defs, markets), keeper, e2e, status
-app/                    Next.js frontend
+P(touch)      = 2 · (1 − Φ( |ln(level / spot)| / (σ·√T) ))
+P(↑ before ↓) = min( ln(spot/low) / ln(high/low),  P(touch high) )
 ```
 
-**Layer split.** The pool and positions are delegated to MagicBlock, so trades are instant. Touch books and sealed batches stay on base so they can be read and settled directly. At expiry the keeper (or anyone) commits and undelegates the market, settles it on base, and users claim.
+When you buy a ticket, its full payout is locked in the house vault, so the book can't go insolvent. A ticket wins only when **both** oracles print through the level within 30 seconds of each other.
 
-**Pricing touch tickets.** The quote is a driftless one-touch probability on log-price, `2·(1 − Φ(|ln(B/S)| / σ√T))`, plus house edge. For "↑ before ↓" it's `min(ln(S/L)/ln(H/L), P_touch(H))`. The UI mirrors the on-chain math exactly.
+### Sealed batch
 
-## Devnet
+```mermaid
+sequenceDiagram
+  autonumber
+  actor T as Trader
+  participant P as wick (sealed)
+  participant A as Arcium cluster
+  T->>T: encrypt {side, size} to MXE key
+  T->>P: place_order(ciphertexts, public deposit)
+  P->>A: add order to encrypted totals
+  A-->>P: new encrypted totals
+  Note over P: batch closes
+  P->>A: reveal_totals (only if ≥ 3 orders)
+  A-->>P: YES total, NO total → one clearing price
+  Note over P: market settles
+  P->>A: reveal_order
+  A-->>P: side, size → payout
+  T->>P: withdraw_payout
+```
 
-| | |
+Orders stay sealed for the whole life of the market. Only the batch totals are revealed at close, and everyone fills at `YES_total / (YES_total + NO_total)`. Each order is opened only after resolution, to pay it out.
+
+## Security model
+
+| Threat | Mitigation |
+|---|---|
+| One oracle is wrong or manipulated | Both must agree on side and within the max gap, or the market freezes |
+| Settler picks a favourable print | Only the market's pinned Pyth push feed, printed within 120s of expiry |
+| Stale touch quotes | Quotes use the pinned push feed, at most 30s old |
+| A wick seen by one feed only | Touches need both oracles, within 30s of each other |
+| House insolvency | Full payout is reserved at purchase; capacity is checked on-chain |
+| Funds stuck in a frozen market | Anyone can void after 24h; shares redeem at 0.50, fully backed |
+| Small sealed batches leak orders | Totals are revealed only with ≥ 3 orders; otherwise a full refund with nothing revealed |
+| Late MPC callbacks | Callbacks must match the batch's pending order and the expected state |
+| Batch squatting | Only the market creator can open its sealed batch |
+
+> These are unaudited devnet contracts using a test USDC mint.
+
+## Verified on devnet
+
+A full lifecycle ran against devnet with scripted users:
+
+- **Instant:** deposit, delegate, then buy and sell on MagicBlock in about 1 second each.
+- **Touch:** tickets priced on-chain; 3 were confirmed as winners when both oracles printed through the level.
+- **Settlement:** the market settled NO on Pyth $122.874 and Switchboard $122.88, 34 seconds after expiry.
+- **Sealed:** 3 encrypted orders; Arcium revealed only the totals (YES $30, NO $15, clearing at 66.7¢); the winning order was paid $55.
+- **Claims:** pool, touch and sealed payouts reached the wallet, and the creator's LP claim paid out with the vault staying solvent.
+
+## Devnet deployment
+
+| | Address |
 |---|---|
 | Markets program | `336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow` |
-| Sealed (Arcium) program | `8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT` (cluster offset 456) |
-| Addresses | [`app/src/deployment.json`](app/src/deployment.json) |
+| Sealed program (Arcium, cluster 456) | `8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT` |
+| Mint, oracles, markets | [`app/src/deployment.json`](app/src/deployment.json) |
+
+## Repository
+
+```
+programs/wick_markets   markets, FPMM pool, touch book, dual-oracle settlement, ER delegation
+programs/wick           Arcium sealed batch (MXE program)
+encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order
+app                     Next.js frontend (markets, trading panels, portfolio, /docs)
+scripts                 setup, keeper, status, e2e, claim
+```
 
 ## Run it
 
 ```bash
-# programs
-arcium build
-# env: RPC_URL, ER_URL, PYTH_API_KEY (Pyth Core requires one), KEYPAIR
-npx tsx scripts/setup.ts            # mint, oracle accounts, Arcium comp defs, markets
-npx tsx scripts/keeper.ts           # oracle cranks, touch confirmation, settlement, sealed reveal
-npx tsx scripts/status.ts           # snapshot
+cp .env.example .env                 # RPC_URL, ER_URL, PYTH_API_KEY, KEYPAIR
+yarn && arcium build
+cargo test -p wick_markets --lib     # pool, pricing and oracle-parsing tests
 
-cd app && pnpm i && pnpm dev        # app/.env.local: NEXT_PUBLIC_RPC_URL, NEXT_PUBLIC_ER_URL, PYTH_API_KEY, FAUCET_SECRET, RPC_URL
+yarn setup                           # test USDC mint, oracle accounts, Arcium comp defs, markets
+yarn keeper                          # oracle cranks, touch confirmation, settlement, sealed payouts
+yarn status                          # one-screen snapshot of every market, batch and ticket
+yarn e2e                             # scripted user: deposit → trade → touch → sealed order
+
+cd app && cp .env.example .env.local && pnpm i && pnpm dev
 ```
 
-Every keeper action is permissionless. The keeper only saves users the clicks.
+Pyth's Hermes has required an API key since the Pyth Core upgrade (Aug 2026). The app proxies it server-side, so the key never reaches the browser.
 
-## Notes and limits
-
-- These are unaudited devnet contracts using a test USDC mint.
-- Switchboard quotes carry a slot rather than a timestamp, so print time is estimated at 400ms per slot.
-- "↑ before ↓" relies on someone confirming the knock-out promptly. The house keeper has every incentive to do so.
-- Sealed orders are processed one at a time (a busy lock). If a computation never calls back, the order can be cancelled after 3 minutes for a full refund.
+**Built with:** Anchor · MagicBlock Ephemeral Rollups · Arcium · Pyth · Switchboard On-Demand · Next.js · Tailwind · lightweight-charts

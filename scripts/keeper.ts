@@ -21,7 +21,7 @@ import {
   sleep,
   admin,
 } from "./lib";
-import { refreshAll } from "./oracles";
+import { refresh } from "./oracles";
 import { arciumAccounts, randomOffset } from "./setup";
 
 const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -181,11 +181,42 @@ async function crankSealed() {
 process.on("unhandledRejection", (e) => log("unhandled", String(e).slice(0, 160)));
 process.on("uncaughtException", (e) => log("uncaught", String(e).slice(0, 160)));
 
+let tick = 0;
+
+const symbolOf = (feedId: number[]) =>
+  ASSETS.find((a) => Buffer.from(a.pythFeedId, "hex").equals(Buffer.from(feedId)))?.symbol;
+
+/** Assets with an open touch ticket or a market within 5 minutes of expiry (or awaiting settlement). */
+async function hotAssets() {
+  const hot = new Set<string>();
+  const books = await markets.account.touchBook.all([{ dataSize: markets.account.touchBook.size }]);
+  const tickets = await markets.account.touchTicket.all([{ dataSize: markets.account.touchTicket.size }]);
+  for (const t of tickets) {
+    if (key(t.account.status) !== "open") continue;
+    const b = books.find((x) => x.publicKey.equals(t.account.book));
+    if (b && now() <= b.account.expiry.toNumber() + TOUCH_GRACE) hot.add(symbolOf(b.account.oracle.pythFeedId) ?? "");
+  }
+  for (const b of books) {
+    const dt = b.account.expiry.toNumber() - now();
+    if (dt < 300 && dt > -SETTLE_WINDOW) hot.add(symbolOf(b.account.oracle.pythFeedId) ?? "");
+  }
+  hot.delete("");
+  return hot;
+}
+
 async function main() {
   log(`keeper up · ${d.markets.length} markets · house ${admin.publicKey.toBase58().slice(0, 6)}`);
   for (;;) {
     const t0 = Date.now();
-    await refreshAll(ASSETS, hashes).catch((e) => log("oracle refresh error", String(e).slice(0, 160)));
+    // Pyth every other tick keeps ticket quotes inside their 30s freshness bound. Switchboard
+    // only matters for touch confirmation and settlement, so it runs every tick for assets
+    // that are "hot" and every fourth tick otherwise. This keeps devnet SOL burn low.
+    tick++;
+    const hot = await hotAssets().catch(() => new Set(ASSETS.map((a) => a.symbol)));
+    const sbFor = ASSETS.filter((a) => hot.has(a.symbol) || tick % 4 === 0);
+    await refresh(ASSETS, hashes, tick % 2 === 0 || hot.size > 0, sbFor).catch((e) =>
+      log("oracle refresh error", String(e).slice(0, 160)),
+    );
     for (const [name, fn] of [
       ["touch", confirmTouches],
       ["settle", settleMarkets],

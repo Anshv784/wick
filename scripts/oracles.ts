@@ -82,10 +82,11 @@ export async function pushSwitchboard(feedHash: string) {
   return sig;
 }
 
-export async function refreshAll(assets: AssetCfg[], hashes: Record<string, string>) {
+/** Refreshes Pyth for every asset and Switchboard for the listed ones. */
+export async function refresh(assets: AssetCfg[], hashes: Record<string, string>, pyth: boolean, sbFor: AssetCfg[]) {
   const jobs = [
-    pushPyth(assets).catch((e) => log("pyth push failed", String(e).slice(0, 160))),
-    ...assets.map((a) =>
+    pyth ? pushPyth(assets).catch((e) => log("pyth push failed", String(e).slice(0, 160))) : null,
+    ...sbFor.map((a) =>
       pushSwitchboard(hashes[a.symbol]).catch((e) => log(`sb ${a.symbol} failed`, String(e).slice(0, 160))),
     ),
   ];

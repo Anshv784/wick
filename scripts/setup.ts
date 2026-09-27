@@ -4,18 +4,12 @@
  *
  *   RPC_URL=... npx tsx scripts/setup.ts [--markets]
  */
-import { BN } from "@anchor-lang/core";
 import {
   getArciumAccountBaseSeed,
   getArciumProgram,
   getArciumProgramId,
-  getClusterAccAddress,
-  getCompDefAccAddress,
   getCompDefAccOffset,
-  getComputationAccAddress,
-  getExecutingPoolAccAddress,
   getLookupTableAddress,
-  getMempoolAccAddress,
   getMXEAccAddress,
   getRawCircuitAccAddress,
   uploadCircuit,
@@ -41,7 +35,8 @@ import {
   sealed,
   writeDeployment,
 } from "./lib";
-import { hermes, pushPyth, pushSwitchboard, pythAccount, sbFeedHash, sbQuoteAccount } from "./oracles";
+import { openMarket, PLAN } from "./markets";
+import { pushPyth, pushSwitchboard, pythAccount, sbFeedHash, sbQuoteAccount } from "./oracles";
 
 const KEYS = path.join(ROOT, "keys");
 const USDC = 1_000_000;
@@ -129,96 +124,14 @@ async function ensureCompDefs() {
   }
 }
 
-export function arciumAccounts(offset: BN, circuit: string) {
-  return {
-    mxeAccount: getMXEAccAddress(sealed.programId),
-    mempoolAccount: getMempoolAccAddress(ARCIUM_CLUSTER_OFFSET),
-    executingPool: getExecutingPoolAccAddress(ARCIUM_CLUSTER_OFFSET),
-    computationAccount: getComputationAccAddress(ARCIUM_CLUSTER_OFFSET, offset),
-    compDefAccount: getCompDefAccAddress(sealed.programId, Buffer.from(getCompDefAccOffset(circuit)).readUInt32LE()),
-    clusterAccount: getClusterAccAddress(ARCIUM_CLUSTER_OFFSET),
-  };
-}
-
-export const randomOffset = () => new BN(Keypair.generate().publicKey.toBuffer().subarray(0, 8), "le");
-
-const STEP = { SOL: 1, BTC: 500, ETH: 25 } as const;
-const VOL = { SOL: 7_000, BTC: 4_500, ETH: 5_500 } as const;
-
 const QUICK_MINUTES = Number(process.env.QUICK_MINUTES ?? 0);
 
-const PLAN: { symbol: "SOL" | "BTC" | "ETH"; hours: number }[] = QUICK_MINUTES
-  ? [{ symbol: "SOL", hours: QUICK_MINUTES / 60 }]
-  : [
-  { symbol: "SOL", hours: 6 },
-  { symbol: "SOL", hours: 72 },
-  { symbol: "BTC", hours: 72 },
-  { symbol: "ETH", hours: 72 },
-];
-
 async function createMarkets(d: Deployment) {
-  const mint = new PublicKey(d.mint);
-  const creatorToken = (await getOrCreateAssociatedTokenAccount(conn, admin, mint, admin.publicKey)).address;
-  for (const p of PLAN) {
-    const a = ASSETS.find((x) => x.symbol === p.symbol)!;
-    const upd = await hermes.getLatestPriceUpdates([a.pythFeedId]);
-    const px = upd.parsed![0].price;
-    const spot = Number(px.price) * 10 ** px.expo;
-    const strike = Math.round(spot / STEP[p.symbol]) * STEP[p.symbol];
-    const expiry = Math.floor(Date.now() / 1000 + p.hours * 3600);
-    const id = Date.now() % 1_000_000_000;
-    const market = PublicKey.findProgramAddressSync(
-      [Buffer.from("market"), admin.publicKey.toBuffer(), new BN(id).toArrayLike(Buffer, "le", 8)],
-      markets.programId,
-    )[0];
-    const symbol = Array.from(Buffer.concat([Buffer.from(p.symbol), Buffer.alloc(16)]).subarray(0, 16));
-
-    await markets.methods
-      .createMarket({
-        marketId: new BN(id),
-        symbol,
-        oracle: {
-          pythFeedId: Array.from(Buffer.from(a.pythFeedId, "hex")),
-          pythAccount: new PublicKey(d.oracles[p.symbol].pythAccount),
-          sbFeed: new PublicKey(d.oracles[p.symbol].sbQuote),
-          maxDevBps: 50,
-        },
-        strike: new BN(Math.round(strike * 1e8)),
-        expiry: new BN(expiry),
-        feeBps: 100,
-        liquidity: new BN(500 * USDC),
-      })
-      .accountsPartial({ creator: admin.publicKey, market, mint, creatorToken })
-      .rpc({ commitment: "confirmed" });
-
-    await markets.methods
-      .createTouchBook({
-        volBps: VOL[p.symbol],
-        marginBps: 800,
-        maxPayout: new BN(1_000 * USDC),
-        funding: new BN(5_000 * USDC),
-      })
-      .accountsPartial({ house: admin.publicKey, market, mint, houseToken: creatorToken })
-      .rpc({ commitment: "confirmed" });
-
-    try {
-      const offset = randomOffset();
-      await sealed.methods
-        .createBatch(offset, new BN(Math.floor(expiry - Math.min(3600, (p.hours * 3600) / 4))))
-        .accountsPartial({ payer: admin.publicKey, market, mint, ...arciumAccounts(offset, "init_totals") })
-        .rpc({ commitment: "confirmed" });
-    } catch (e) {
-      log("sealed batch skipped:", String(e).slice(0, 200));
-    }
-
-    await markets.methods
-      .delegateMarket(new BN(id))
-      .accountsPartial({ payer: admin.publicKey })
-      .rpc({ commitment: "confirmed" });
-
-    d.markets.push(market.toBase58());
+  const plan = QUICK_MINUTES ? [{ symbol: "SOL" as const, hours: QUICK_MINUTES / 60 }] : PLAN;
+  for (const p of plan) {
+    const key = await openMarket(d, p.symbol, p.hours);
+    d.markets.push(key.toBase58());
     writeDeployment(d);
-    log(`market ${p.symbol} ≥ ${strike} in ${(p.hours * 60).toFixed(0)}m →`, market.toBase58());
   }
 }
 

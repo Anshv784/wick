@@ -6,8 +6,8 @@ import { marketQuestion } from "@/components/MarketCard";
 import { StatusPill } from "@/components/StatusPill";
 import { TicketList } from "@/components/TicketList";
 import { fmtNum } from "@/lib/format";
-import { MARKET_KEYS, useMarkets, usePoll, useTickets, useUsdc } from "@/lib/hooks";
-import { fetchPosition, pdas } from "@/lib/wick";
+import { useMarkets, usePoll, useTickets, useUsdc } from "@/lib/hooks";
+import { baseConn, discoverMarketKeys, fetchPosition, pdas, sealedProgram } from "@/lib/wick";
 
 export default function Portfolio() {
   const wallet = useAnchorWallet();
@@ -16,13 +16,40 @@ export default function Portfolio() {
   const tickets = useTickets();
   const positions = usePoll(
     async () => {
+      const sealedOrders = usePoll(
+    async () => {
       if (!wallet) return [];
+      const rows = await sealedProgram(baseConn).account.sealedOrder.all([
+        { dataSize: sealedProgram(baseConn).account.sealedOrder.size },
+        { memcmp: { offset: 8 + 64 + 16 + 32, bytes: wallet.publicKey.toBase58() } },
+      ]);
+      return rows;
+    },
+    8000,
+    [wallet?.publicKey.toBase58()],
+  );
+
+  if (!wallet) return [];
+      const keys = await discoverMarketKeys();
       const rows = await Promise.all(
-        MARKET_KEYS.map(async (k) => ({ k, p: await fetchPosition(pdas.position(k, wallet.publicKey)) })),
+        keys.map(async (k) => ({ k, p: await fetchPosition(pdas.position(k, wallet.publicKey)).catch(() => null) })),
       );
       return rows.filter((r) => r.p);
     },
     5000,
+    [wallet?.publicKey.toBase58()],
+  );
+
+  const sealedOrders = usePoll(
+    async () => {
+      if (!wallet) return [];
+      const rows = await sealedProgram(baseConn).account.sealedOrder.all([
+        { dataSize: sealedProgram(baseConn).account.sealedOrder.size },
+        { memcmp: { offset: 8 + 64 + 16 + 32, bytes: wallet.publicKey.toBase58() } },
+      ]);
+      return rows;
+    },
+    8000,
     [wallet?.publicKey.toBase58()],
   );
 
@@ -58,6 +85,27 @@ export default function Portfolio() {
               </div>
               {m && <StatusPill m={m} />}
             </Link>
+          );
+        })}
+      </div>
+
+      <h2 className="font-display mt-12 mb-4 text-[32px] tracking-tight">Sealed orders</h2>
+      <div className="panel divide-y divide-line">
+        {(sealedOrders.data ?? []).length === 0 && <p className="p-6 text-center text-[13px] text-muted">No sealed orders yet.</p>}
+        {(sealedOrders.data ?? []).map(({ publicKey, account: o }) => {
+          const st = Object.keys(o.state)[0];
+          return (
+            <div key={publicKey.toBase58()} className="flex items-center gap-4 p-4 text-[13px]">
+              <span className="h-2 w-2 rounded-full bg-violet" />
+              <div className="flex-1">
+                <div className="num">deposit ${fmtNum(o.deposit.toNumber() / 1e6)} · side & size 🔒</div>
+                <div className="text-[11px] text-muted">batch {o.batch.toBase58().slice(0, 8)}…</div>
+              </div>
+              <div className="text-right">
+                <div className="num text-violet">{st === "settled" || st === "paid" ? `$${fmtNum(o.payout.toNumber() / 1e6)}` : "—"}</div>
+                <div className="text-[11px] text-muted capitalize">{st}</div>
+              </div>
+            </div>
           );
         })}
       </div>

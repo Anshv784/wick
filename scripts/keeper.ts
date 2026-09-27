@@ -7,8 +7,13 @@
  *
  *   RPC_URL=... npx tsx scripts/keeper.ts
  */
-import { PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { createMintToInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { Keypair, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import fs from "fs";
+import path from "path";
 import {
+  arciumAccounts,
+  randomOffset,
   ASSETS,
   conn,
   erConn,
@@ -20,9 +25,10 @@ import {
   sealed,
   sleep,
   admin,
+  ROOT,
 } from "./lib";
 import { refresh } from "./oracles";
-import { arciumAccounts, randomOffset } from "./setup";
+import { discoverMarkets, openMarket, PLAN } from "./markets";
 
 const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 const SETTLE_WINDOW = 120;
@@ -80,13 +86,59 @@ async function confirmTouches() {
   }
 }
 
+/** Markets from deployment.json plus every sequential market of the house. */
+async function allMarkets() {
+  const keys = new Map(d.markets.map((s) => [s, new PublicKey(s)]));
+  for (const m of await discoverMarkets(admin.publicKey)) keys.set(m.key.toBase58(), m.key);
+  return [...keys.values()];
+}
+
+async function fetchAnyMarket(k: PublicKey) {
+  const delegated = await isDelegated(k);
+  const m = await (delegated ? marketsEr : markets).account.market.fetchNullable(k).catch(() => null);
+  return m ? { m, delegated } : null;
+}
+
+/** Keeps the PLAN line-up live: a short SOL market and a 3-day market per asset. */
+async function rollMarkets() {
+  const live: { symbol: string; left: number }[] = [];
+  for (const k of await allMarkets()) {
+    const r = await fetchAnyMarket(k);
+    if (!r || key(r.m.status) !== "open") continue;
+    const left = r.m.expiry.toNumber() - now();
+    if (left > 0) live.push({ symbol: Buffer.from(r.m.symbol).toString().replace(/\0/g, ""), left });
+  }
+  const used = new Set<number>();
+  for (const slot of PLAN) {
+    const short = slot.hours <= 12;
+    // A short slot is covered by a market with 30m–12h left, a long slot by one with >12h left.
+    const i = live.findIndex(
+      (l, j) => !used.has(j) && l.symbol === slot.symbol && (short ? l.left > 1_800 && l.left <= 43_200 : l.left > 43_200),
+    );
+    if (i >= 0) {
+      used.add(i);
+      continue;
+    }
+    await openMarket(d, slot.symbol, slot.hours).catch((e) => log("open market failed", String(e).slice(0, 160)));
+  }
+}
+
+/** Keeps the house stocked with test USDC so new markets and touch books can be funded. */
+async function topUpHouse() {
+  const mint = new PublicKey(d.mint);
+  const ata = getAssociatedTokenAddressSync(mint, admin.publicKey);
+  const bal = Number((await conn.getTokenAccountBalance(ata)).value.amount) / 1e6;
+  if (bal >= 30_000) return;
+  const faucet = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(path.join(ROOT, "keys/faucet.json"), "utf8"))));
+  await send(conn, [createMintToInstruction(mint, ata, faucet.publicKey, 100_000_000_000n)], [admin, faucet]);
+  log("house topped up with 100k test USDC");
+}
+
 async function settleMarkets() {
-  for (const k of d.markets.map((s) => new PublicKey(s))) {
-    const delegated = await isDelegated(k);
-    const m = delegated
-      ? await marketsEr.account.market.fetchNullable(k)
-      : await markets.account.market.fetchNullable(k);
-    if (!m) continue;
+  for (const k of await allMarkets()) {
+    const r = await fetchAnyMarket(k);
+    if (!r) continue;
+    const { m, delegated } = r;
     const expiry = m.expiry.toNumber();
     const status = key(m.status);
 
@@ -205,7 +257,7 @@ async function hotAssets() {
 }
 
 async function main() {
-  log(`keeper up · ${d.markets.length} markets · house ${admin.publicKey.toBase58().slice(0, 6)}`);
+  log(`keeper up · house ${admin.publicKey.toBase58().slice(0, 6)}`);
   for (;;) {
     const t0 = Date.now();
     // Pyth every other tick keeps ticket quotes inside their 30s freshness bound. Switchboard
@@ -217,11 +269,14 @@ async function main() {
     await refresh(ASSETS, hashes, tick % 2 === 0 || hot.size > 0, sbFor).catch((e) =>
       log("oracle refresh error", String(e).slice(0, 160)),
     );
-    for (const [name, fn] of [
+    const jobs: [string, () => Promise<unknown>][] = [
       ["touch", confirmTouches],
       ["settle", settleMarkets],
       ["sealed", crankSealed],
-    ] as const) {
+    ];
+    // Market roll-over and house top-up are slow checks; run them every ~5 minutes.
+    if (tick % 40 === 1) jobs.push(["roll", rollMarkets], ["topup", topUpHouse]);
+    for (const [name, fn] of jobs) {
       await fn().catch((e) => log(`${name} loop error`, String(e).slice(0, 200)));
     }
     await sleep(Math.max(1_000, TICK_MS - (Date.now() - t0)));

@@ -16,7 +16,7 @@ import sealedIdl from "../target/idl/wick.json";
 import type { WickMarkets } from "../target/types/wick_markets";
 import type { Wick } from "../target/types/wick";
 import { admin, conn, erConn, log, readDeployment, ROOT, send, sleep } from "./lib";
-import { arciumAccounts, randomOffset } from "./setup";
+import { arciumAccounts, randomOffset } from "./lib";
 
 const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 

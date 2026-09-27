@@ -83,6 +83,22 @@ export type TicketAccount = Awaited<
   ReturnType<ReturnType<typeof marketsProgram>["account"]["touchTicket"]["fetch"]>
 >;
 
+export const HOUSE = deployment.house ? new PublicKey(deployment.house) : null;
+
+/** Markets listed in deployment.json plus the house's sequential markets (ids 1, 2, 3, …). */
+export async function discoverMarketKeys(): Promise<PublicKey[]> {
+  const keys = new Map<string, PublicKey>((deployment.markets as string[]).map((k) => [k, new PublicKey(k)]));
+  if (HOUSE) {
+    for (let start = 1; ; start += 50) {
+      const batch = Array.from({ length: 50 }, (_, i) => pdas.market(HOUSE, start + i));
+      const infos = await baseConn.getMultipleAccountsInfo(batch);
+      infos.forEach((info, i) => info && keys.set(batch[i].toBase58(), batch[i]));
+      if (infos.every((i) => !i)) break;
+    }
+  }
+  return [...keys.values()];
+}
+
 export type Located<T> = { data: T; onEr: boolean };
 
 /** Reads an account from the ER when it is delegated, otherwise from base. */

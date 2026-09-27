@@ -59,7 +59,7 @@ export function MarketCard({ k, m, i }: { k: PublicKey; m: Located<MarketAccount
               {(yes / 100).toFixed(0)}
               <span className="text-[20px] text-muted">%</span>
             </div>
-            <div className="mt-1 text-[11px] tracking-wide text-muted uppercase">chance YES</div>
+            <div className="mt-1 text-[11px] tracking-wide text-muted uppercase">{resolved ? "last YES price" : "chance YES"}</div>
           </div>
           {resolved ? (
             <div className="text-right">

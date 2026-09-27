@@ -3,10 +3,10 @@
 import { useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import deployment from "@/deployment.json";
 import {
   ata,
   baseConn,
+  discoverMarketKeys,
   erConn,
   BookAccount,
   fetchMarket,
@@ -20,7 +20,6 @@ import {
   TicketAccount,
 } from "./wick";
 
-export const MARKET_KEYS: PublicKey[] = (deployment.markets as string[]).map((k) => new PublicKey(k));
 
 /** Polls `load` every `ms`; returns data, a manual refresh, and the first-load flag. */
 export function usePoll<T>(load: () => Promise<T>, ms: number, deps: unknown[]) {
@@ -88,9 +87,8 @@ export function useMarket(key: PublicKey | undefined) {
 export function useMarkets() {
   return usePoll(
     async () => {
-      const rows = await Promise.all(
-        MARKET_KEYS.map(async (k) => ({ key: k, m: await fetchMarket(k).catch(() => null) })),
-      );
+      const keys = await discoverMarketKeys();
+      const rows = await Promise.all(keys.map(async (k) => ({ key: k, m: await fetchMarket(k).catch(() => null) })));
       const now = Date.now() / 1000;
       const live = (m: MarketAccount) => "open" in (m.status as object) && m.expiry.toNumber() > now;
       return (rows.filter((r) => r.m) as { key: PublicKey; m: Located<MarketAccount> }[]).sort(

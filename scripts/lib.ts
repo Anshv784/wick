@@ -1,4 +1,13 @@
-import { AnchorProvider, Program, Wallet } from "@anchor-lang/core";
+import { AnchorProvider, BN, Program, Wallet } from "@anchor-lang/core";
+import {
+  getClusterAccAddress,
+  getCompDefAccAddress,
+  getCompDefAccOffset,
+  getComputationAccAddress,
+  getExecutingPoolAccAddress,
+  getMempoolAccAddress,
+  getMXEAccAddress,
+} from "@arcium-hq/client";
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { CrossbarClient, IOracleFeed } from "@switchboard-xyz/common";
 import * as sb from "@switchboard-xyz/on-demand";
@@ -129,3 +138,16 @@ export const pk = (s: string) => new PublicKey(s);
 export function log(...a: unknown[]) {
   console.log(new Date().toISOString().slice(11, 19), ...a);
 }
+
+export function arciumAccounts(offset: BN, circuit: string) {
+  return {
+    mxeAccount: getMXEAccAddress(sealed.programId),
+    mempoolAccount: getMempoolAccAddress(ARCIUM_CLUSTER_OFFSET),
+    executingPool: getExecutingPoolAccAddress(ARCIUM_CLUSTER_OFFSET),
+    computationAccount: getComputationAccAddress(ARCIUM_CLUSTER_OFFSET, offset),
+    compDefAccount: getCompDefAccAddress(sealed.programId, Buffer.from(getCompDefAccOffset(circuit)).readUInt32LE()),
+    clusterAccount: getClusterAccAddress(ARCIUM_CLUSTER_OFFSET),
+  };
+}
+
+export const randomOffset = () => new BN(Keypair.generate().publicKey.toBuffer().subarray(0, 8), "le");

@@ -165,10 +165,16 @@ export function TouchPanel({
       </div>
 
       <Button tone="flame" busy={busy} disabled={!wallet || !quote || !quote.ok || !Number(stake) || !pythAccount} onClick={buy}>
-        {!wallet ? "Connect wallet" : quote && !quote.ok ? "Exceeds house capacity" : "Buy touch ticket"}
+        {!wallet
+          ? "Connect wallet"
+          : !quote && s
+            ? "Level too close to spot, move it further"
+            : quote && !quote.ok
+              ? "Exceeds house capacity"
+              : "Buy touch ticket"}
       </Button>
       <p className="text-[11px] leading-relaxed text-faint">
-        Settled only when Pyth and Switchboard both print through your level within {30}s of each other. The full payout is reserved in the house vault the moment you buy.
+        Settled only when Pyth and Switchboard both print through your level within 30s of each other. The full payout is reserved in the house vault the moment you buy.
       </p>
     </div>
   );

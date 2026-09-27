@@ -25,7 +25,6 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { HermesClient } from "@pythnetwork/hermes-client";
 import fs from "fs";
 import path from "path";
 import {
@@ -41,7 +40,7 @@ import {
   sealed,
   writeDeployment,
 } from "./lib";
-import { pushPyth, pushSwitchboard, pythAccount, sbFeedHash, sbQuoteAccount } from "./oracles";
+import { hermes, pushPyth, pushSwitchboard, pythAccount, sbFeedHash, sbQuoteAccount } from "./oracles";
 
 const KEYS = path.join(ROOT, "keys");
 const USDC = 1_000_000;
@@ -146,7 +145,6 @@ const PLAN: { symbol: "SOL" | "BTC" | "ETH"; hours: number }[] = [
 ];
 
 async function createMarkets(d: Deployment) {
-  const hermes = new HermesClient("https://hermes.pyth.network");
   const mint = new PublicKey(d.mint);
   const creatorToken = (await getOrCreateAssociatedTokenAccount(conn, admin, mint, admin.publicKey)).address;
   for (const p of PLAN) {

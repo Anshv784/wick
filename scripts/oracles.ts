@@ -1,11 +1,25 @@
 import { HermesClient } from "@pythnetwork/hermes-client";
-import { PythSolanaReceiver } from "@pythnetwork/pyth-solana-receiver";
+import {
+  PRO_COMPATIBLE_PUSH_ORACLE_PROGRAM_ID,
+  PRO_COMPATIBLE_RECEIVER_PROGRAM_ID,
+  PRO_COMPATIBLE_WORMHOLE_PROGRAM_ID,
+  PythSolanaReceiver,
+} from "@pythnetwork/pyth-solana-receiver";
 import * as sb from "@switchboard-xyz/on-demand";
 import { admin, AssetCfg, conn, crossbar, log, PYTH_SHARD, sbQueue, wallet } from "./lib";
 
-const hermes = new HermesClient("https://hermes.pyth.network");
+// Pyth Core (since 2026-08-26): Hermes needs an API key and Solana uses the pro-compatible programs.
+export const hermes = new HermesClient(process.env.PYTH_HERMES_URL ?? "https://pyth.dourolabs.app/hermes", {
+  accessToken: process.env.PYTH_API_KEY,
+});
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const receiver = new PythSolanaReceiver({ connection: conn, wallet: wallet as any });
+const receiver = new PythSolanaReceiver({
+  connection: conn,
+  wallet: wallet as any,
+  receiverProgramId: PRO_COMPATIBLE_RECEIVER_PROGRAM_ID,
+  pushOracleProgramId: PRO_COMPATIBLE_PUSH_ORACLE_PROGRAM_ID,
+  wormholeProgramId: PRO_COMPATIBLE_WORMHOLE_PROGRAM_ID,
+});
 
 export function pythAccount(feedId: string) {
   return receiver.getPriceFeedAccountAddress(PYTH_SHARD, feedId);

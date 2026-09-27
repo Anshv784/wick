@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { ASSETS, AssetSymbol } from "./assets";
 
-const HERMES = "https://hermes.pyth.network";
-const BENCHMARKS = "https://benchmarks.pyth.network/v1/shims/tradingview/history";
 
 export type Tick = { price: number; conf: number; ts: number };
 export type Candle = { time: number; open: number; high: number; low: number; close: number };
@@ -22,8 +20,7 @@ function connect() {
   source?.close();
   sourceIds = key;
   if (!ids.length) return;
-  const qs = ids.map((id) => `ids[]=${id}`).join("&");
-  source = new EventSource(`${HERMES}/v2/updates/price/stream?${qs}&parsed=true&allow_unordered=true`);
+  source = new EventSource(`/api/prices/stream?${ids.map((id) => `ids=${id}`).join("&")}`);
   source.onmessage = (ev) => {
     try {
       const data = JSON.parse(ev.data);
@@ -63,18 +60,7 @@ export function useLivePrice(symbol: AssetSymbol | undefined) {
   return tick;
 }
 
-export async function fetchCandles(symbol: AssetSymbol, resolution = "1", lookbackSecs = 6 * 3600) {
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - lookbackSecs;
-  const url = `${BENCHMARKS}?symbol=${encodeURIComponent(ASSETS[symbol].pythSymbol)}&resolution=${resolution}&from=${from}&to=${to}`;
-  const r = await fetch(url);
-  const d = await r.json();
-  if (d.s !== "ok") return [] as Candle[];
-  return (d.t as number[]).map((t, i) => ({
-    time: t,
-    open: d.o[i],
-    high: d.h[i],
-    low: d.l[i],
-    close: d.c[i],
-  })) as Candle[];
+export async function fetchCandles(symbol: AssetSymbol): Promise<Candle[]> {
+  const r = await fetch(`/api/candles?symbol=${symbol}`);
+  return r.ok ? r.json() : [];
 }

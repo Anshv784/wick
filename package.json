@@ -24,5 +24,8 @@
     "prettier": "^2.6.2",
     "ts-mocha": "^10.0.0",
     "typescript": "^5.7.3"
+  },
+  "resolutions": {
+    "jito-ts/@solana/web3.js": "^1.98.0"
   }
 }

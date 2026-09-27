@@ -10,8 +10,8 @@ wick = "8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT"
 wick_markets = "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
 
 [provider]
-cluster = "localnet"
-wallet = "~/.config/solana/id.json"
+cluster = "devnet"
+wallet = "/Users/anshverma/.config/solana/summit-devnet.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""

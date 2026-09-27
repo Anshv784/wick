@@ -34,7 +34,7 @@ export async function pushPyth(assets: AssetCfg[]) {
   );
   const b = receiver.newTransactionBuilder({ closeUpdateAccounts: true });
   await b.addUpdatePriceFeed(upd.binary.data, PYTH_SHARD);
-  const txs = await b.buildVersionedTransactions({ computeUnitPriceMicroLamports: 20_000 });
+  const txs = await b.buildVersionedTransactions({ computeUnitPriceMicroLamports: 1 });
   await receiver.provider.sendAll(txs, { skipPreflight: true });
 }
 
@@ -57,7 +57,7 @@ export async function pushSwitchboard(feedHash: string) {
   });
   const all = sb.finalizeManagedUpdateInstructions([
     ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 20_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
     ...ixs,
   ]);
   // The devnet quote program still checks absolute Ed25519 instruction indices, while this SDK

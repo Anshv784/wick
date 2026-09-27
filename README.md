@@ -49,7 +49,7 @@ flowchart LR
 
 - **`wick_markets`** (Anchor) holds markets, the FPMM pool, touch books, dual-oracle settlement, and MagicBlock delegation.
 - **`wick`** (Arcium MXE) runs the sealed batch and reads each market's outcome from `wick_markets`.
-- **The keeper** refreshes both oracles and runs every permissionless crank: confirming touches, undelegating, settling, revealing, and paying sealed orders. Anyone can run these; the keeper just saves users the clicks.
+- **The keeper** refreshes both oracles and runs every permissionless crank: confirming touches, undelegating, settling, revealing, and paying sealed orders. Anyone can run these; the keeper just saves users the clicks. It also keeps a line-up of markets live, opening a new market (with sequential ids, so the app finds it automatically) whenever one runs out.
 
 ### Market lifecycle
 
@@ -161,7 +161,7 @@ programs/wick_markets   markets, FPMM pool, touch book, dual-oracle settlement, 
 programs/wick           Arcium sealed batch (MXE program)
 encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order
 app                     Next.js frontend (markets, trading panels, portfolio, /docs)
-scripts                 setup, keeper, status, e2e, claim
+scripts                 setup · keeper · markets (open/discover) · oracles · status · e2e · claim
 ```
 
 ## Run it

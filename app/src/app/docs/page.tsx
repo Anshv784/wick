@@ -79,6 +79,8 @@ export default function Docs() {
           <Mermaid chart={LIFECYCLE} />
           <P>
             Every transition after creation is permissionless. The keeper runs them so users don&apos;t have to, but anyone can.
+            The keeper also rolls markets: it always keeps a short SOL market and a 3-day market per asset open. New markets use
+            sequential ids, so the app discovers them without a registry.
           </P>
         </Section>
 

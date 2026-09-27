@@ -137,7 +137,11 @@ export const randomOffset = () => new BN(Keypair.generate().publicKey.toBuffer()
 const STEP = { SOL: 1, BTC: 500, ETH: 25 } as const;
 const VOL = { SOL: 7_000, BTC: 4_500, ETH: 5_500 } as const;
 
-const PLAN: { symbol: "SOL" | "BTC" | "ETH"; hours: number }[] = [
+const QUICK_MINUTES = Number(process.env.QUICK_MINUTES ?? 0);
+
+const PLAN: { symbol: "SOL" | "BTC" | "ETH"; hours: number }[] = QUICK_MINUTES
+  ? [{ symbol: "SOL", hours: QUICK_MINUTES / 60 }]
+  : [
   { symbol: "SOL", hours: 6 },
   { symbol: "SOL", hours: 72 },
   { symbol: "BTC", hours: 72 },
@@ -153,7 +157,7 @@ async function createMarkets(d: Deployment) {
     const px = upd.parsed![0].price;
     const spot = Number(px.price) * 10 ** px.expo;
     const strike = Math.round(spot / STEP[p.symbol]) * STEP[p.symbol];
-    const expiry = Math.floor(Date.now() / 1000) + p.hours * 3600;
+    const expiry = Math.floor(Date.now() / 1000 + p.hours * 3600);
     const id = Date.now() % 1_000_000_000;
     const market = PublicKey.findProgramAddressSync(
       [Buffer.from("market"), admin.publicKey.toBuffer(), new BN(id).toArrayLike(Buffer, "le", 8)],
@@ -191,7 +195,7 @@ async function createMarkets(d: Deployment) {
     try {
       const offset = randomOffset();
       await sealed.methods
-        .createBatch(offset, new BN(expiry - Math.min(3600, (p.hours * 3600) / 4)))
+        .createBatch(offset, new BN(Math.floor(expiry - Math.min(3600, (p.hours * 3600) / 4))))
         .accountsPartial({ payer: admin.publicKey, market, mint, ...arciumAccounts(offset, "init_totals") })
         .rpc({ commitment: "confirmed" });
     } catch (e) {
@@ -205,7 +209,7 @@ async function createMarkets(d: Deployment) {
 
     d.markets.push(market.toBase58());
     writeDeployment(d);
-    log(`market ${p.symbol} ≥ ${strike} in ${p.hours}h →`, market.toBase58());
+    log(`market ${p.symbol} ≥ ${strike} in ${(p.hours * 60).toFixed(0)}m →`, market.toBase58());
   }
 }
 

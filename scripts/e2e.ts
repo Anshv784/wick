@@ -23,7 +23,7 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
 (async () => {
   const d = readDeployment();
   const mint = new PublicKey(d.mint);
-  const market = new PublicKey(d.markets[0]);
+  const market = new PublicKey(d.markets[Number(process.env.MARKET_INDEX ?? 0)]);
   const user = Keypair.generate();
   const w = new Wallet(user);
   const mk = new Program<WickMarkets>(marketsIdl as WickMarkets, new AnchorProvider(conn, w, { commitment: "confirmed" }));
@@ -64,7 +64,7 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
   const book = PublicKey.findProgramAddressSync([Buffer.from("touch_book"), market.toBuffer()], mk.programId)[0];
   const spot = m.strike.toNumber() / 1e8;
   await send(conn, [
-    await mk.methods.buyTicket({ kind: { up: {} }, barrier: new BN(Math.round(spot * 1.01 * 1e8)), barrier2: new BN(0), stake: new BN(5_000_000), maxPriceBps: 9_500 })
+    await mk.methods.buyTicket({ kind: { up: {} }, barrier: new BN(Math.round(spot * (1 + Number(process.env.TOUCH_PCT ?? 1) / 100) * 1e8)), barrier2: new BN(0), stake: new BN(5_000_000), maxPriceBps: 9_500 })
       .accountsPartial({ owner: user.publicKey, book, mint, ownerToken: ata, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount) })
       .instruction(),
   ], [user]);

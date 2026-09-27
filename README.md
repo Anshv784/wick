@@ -74,7 +74,7 @@ stateDiagram-v2
 flowchart LR
   A[settle after expiry] --> B{Pinned Pyth<br/>push feed?}
   B -- no --> X[reject]
-  B -- yes --> C{Both prints within<br/>expiry + 120s?}
+  B -- yes --> C{Both prints within<br/>expiry + 5 min?}
   C -- no --> X
   C -- yes --> D{Same side<br/>of strike?}
   D -- no --> F[❄ Frozen]
@@ -125,14 +125,17 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 | Threat | Mitigation |
 |---|---|
 | One oracle is wrong or manipulated | Both must agree on side and within the max gap, or the market freezes |
-| Settler picks a favourable print | Only the market's pinned Pyth push feed, printed within 120s of expiry |
-| Stale touch quotes | Quotes use the pinned push feed, at most 30s old |
+| Settler picks a favourable print | Only the market's pinned Pyth push feed, printed within 5 minutes of expiry; a freeze can still resolve if they agree later in the window |
+| Stale touch quotes | Quotes use the pinned push feed (≤20s old) and price off whichever oracle is less favourable to the buyer |
 | A wick seen by one feed only | Touches need both oracles, within 30s of each other |
 | House insolvency | Full payout is reserved at purchase; capacity is checked on-chain |
 | Funds stuck in a frozen market | Anyone can void after 24h; shares redeem at 0.50, fully backed |
-| Small sealed batches leak orders | Totals are revealed only with ≥ 3 orders; otherwise a full refund with nothing revealed |
+| Small sealed batches leak orders | Totals are revealed only with ≥ 3 orders; otherwise a full refund with nothing revealed. (Sybil orders can still shrink the anonymity set; this is a known limit of batch privacy.) |
 | Late MPC callbacks | Callbacks must match the batch's pending order and the expected state |
 | Batch squatting | Only the market creator can open its sealed batch |
+| Near-certain touch tickets | Quotes above 95% are refused, not clamped |
+| "↑ before ↓" order disputes | Its confirmations must use prints under 20s old, so the order of events is fixed in real time |
+| Stuck MPC computations | Order payouts, batch reveals and inits can all be re-queued after a timeout |
 
 > These are unaudited devnet contracts using a test USDC mint.
 

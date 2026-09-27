@@ -36,6 +36,8 @@ pub struct BuyTicket<'info> {
     #[account(mut, token::mint = mint, token::authority = owner)]
     pub owner_token: Account<'info, TokenAccount>,
     pub price_update: Account<'info, PriceUpdateV2>,
+    /// CHECK: validated against the book's oracle spec in `read_switchboard`.
+    pub sb_feed: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -46,11 +48,22 @@ pub fn buy_ticket(ctx: Context<BuyTicket>, args: BuyTicketArgs) -> Result<()> {
     require!(now + 60 < book.expiry, WickError::Expired);
     require!(args.stake >= SHARE_UNIT / 10, WickError::InvalidParams);
 
-    let spot = read_pyth_pinned(&ctx.accounts.price_update, &book.oracle)?;
+    let clock = Clock::get()?;
+    let p = read_pyth_pinned(&ctx.accounts.price_update, &book.oracle)?;
+    let s = read_switchboard(&ctx.accounts.sb_feed, &book.oracle, &clock)?;
     require!(
-        (0..=QUOTE_MAX_AGE_SECS as i64).contains(&(now - spot.ts)),
+        (0..=QUOTE_MAX_AGE_SECS as i64).contains(&(now - p.ts)) && now - s.ts <= QUOTE_SB_MAX_AGE_SECS,
         WickError::OracleStale
     );
+    // Quote off whichever oracle is closer to the barrier, so a stale print can't be used
+    // to buy a touch that has effectively already happened.
+    let spot = Print {
+        price: match args.kind {
+            TouchKind::Up | TouchKind::UpBeforeDown => p.price.max(s.price),
+            TouchKind::Down => p.price.min(s.price),
+        },
+        ts: p.ts,
+    };
 
     let fair = touch_fair_bps(
         args.kind,
@@ -60,7 +73,7 @@ pub fn buy_ticket(ctx: Context<BuyTicket>, args: BuyTicketArgs) -> Result<()> {
         book.vol_bps,
         book.expiry - now,
     )?;
-    let price_bps = touch_quote_bps(fair, book.margin_bps);
+    let price_bps = touch_quote_bps(fair, book.margin_bps)?;
     require!(price_bps <= args.max_price_bps as u64, WickError::Slippage);
     let payout = payout_for(args.stake, price_bps)?;
     require!(payout <= book.max_payout, WickError::HouseCapacity);
@@ -155,13 +168,20 @@ pub fn confirm_touch(ctx: Context<ConfirmTouch>) -> Result<()> {
 
     let p: Print = read_pyth(&ctx.accounts.price_update, &book.oracle)?;
     let s: Print = read_switchboard(&ctx.accounts.sb_feed, &book.oracle, &Clock::get()?)?;
-    for pr in [&p, &s] {
+    // The Pyth print must fall inside the ticket's life; the Switchboard quote may land up to
+    // TOUCH_SYNC_SECS after it, so a touch just before expiry can still be proven.
+    require!(
+        p.ts >= t.created_at && p.ts <= book.expiry && s.ts >= t.created_at,
+        WickError::OracleStale
+    );
+    require!((p.ts - s.ts).abs() <= TOUCH_SYNC_SECS, WickError::OracleStale);
+    if t.kind == TouchKind::UpBeforeDown {
+        let now = Clock::get()?.unix_timestamp;
         require!(
-            pr.ts >= t.created_at && pr.ts <= book.expiry,
+            now - p.ts <= ORDERED_FRESH_SECS && now - s.ts <= ORDERED_FRESH_SECS,
             WickError::OracleStale
         );
     }
-    require!((p.ts - s.ts).abs() <= TOUCH_SYNC_SECS, WickError::OracleStale);
     require!(
         gap_bps(p.price, s.price) <= book.oracle.max_dev_bps as u64,
         WickError::TouchNotConfirmed

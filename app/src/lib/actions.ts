@@ -121,6 +121,7 @@ export async function buyTicket(
   wallet: AnchorWallet,
   market: PublicKey,
   pythAccount: PublicKey,
+  sbQuote: PublicKey,
   p: { kind: TouchKind; barrier: number; barrier2: number; stake: number; maxPriceBps: number },
 ) {
   const program = marketsProgram(baseConn, wallet);
@@ -139,6 +140,7 @@ export async function buyTicket(
       mint: MINT!,
       ownerToken: ata(wallet.publicKey),
       priceUpdate: pythAccount,
+      sbFeed: sbQuote,
     })
     .instruction();
   return sendTx(baseConn, wallet, [ix]);

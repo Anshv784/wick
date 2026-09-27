@@ -51,9 +51,10 @@ export function touchFairBps(
   return Math.floor(p * 10_000);
 }
 
+/** Returns null for near-certain touches, which the program refuses to sell. */
 export function touchQuoteBps(fairBps: number, marginBps: number) {
   const priced = fairBps + Math.floor((fairBps * marginBps) / 10_000);
-  return Math.min(MAX_PRICE_BPS, Math.max(MIN_PRICE_BPS, priced));
+  return priced > MAX_PRICE_BPS ? null : Math.max(MIN_PRICE_BPS, priced);
 }
 
 /** FPMM buy preview. Amount and reserves in USDC base units. */

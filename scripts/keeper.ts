@@ -186,7 +186,20 @@ async function crankSealed() {
   const batches = await sealed.account.sealedBatch.all([{ dataSize: sealed.account.sealedBatch.size }]);
   for (const { publicKey: batch, account: b } of batches) {
     const st = key(b.state);
-    if (st === "open" && now() >= b.closeTs.toNumber() && b.busySince.toNumber() === 0) {
+    const lockExpired = now() > b.busySince.toNumber() + 60;
+    if (st === "initializing" && lockExpired) {
+      const offset = randomOffset();
+      await sealed.methods
+        .retryInitBatch(offset)
+        .accountsPartial({ payer: admin.publicKey, batch, ...arciumAccounts(offset, "init_totals") })
+        .rpc({ commitment: "confirmed" })
+        .then(() => log(`init retried ${batch.toBase58().slice(0, 6)}`))
+        .catch((e) => log("init retry failed", String(e).slice(0, 120)));
+    }
+    if (
+      (st === "open" && now() >= b.closeTs.toNumber() && (b.busySince.toNumber() === 0 || lockExpired)) ||
+      (st === "revealing" && lockExpired)
+    ) {
       const offset = randomOffset();
       try {
         await sealed.methods
@@ -256,19 +269,32 @@ async function hotAssets() {
   return hot;
 }
 
-async function main() {
-  log(`keeper up · house ${admin.publicKey.toBase58().slice(0, 6)}`);
+const ORACLE_MS = 6_000;
+
+/**
+ * Oracle cranks run on their own clock so slow settlement work never lets feeds go stale.
+ * Pyth every 6s keeps ticket quotes inside their 20s bound; Switchboard (only needed for
+ * quotes, touch confirmation and settlement) every 6s for hot assets and every ~24s otherwise.
+ */
+async function oracleLoop() {
+  let n = 0;
+  let hot = new Set<string>();
   for (;;) {
     const t0 = Date.now();
-    // Pyth every other tick keeps ticket quotes inside their 30s freshness bound. Switchboard
-    // only matters for touch confirmation and settlement, so it runs every tick for assets
-    // that are "hot" and every fourth tick otherwise. This keeps devnet SOL burn low.
+    if (n % 5 === 0) hot = await hotAssets().catch(() => hot);
+    const sbFor = ASSETS.filter((a) => hot.has(a.symbol) || n % 4 === 0);
+    await refresh(ASSETS, hashes, true, sbFor).catch((e) => log("oracle refresh error", String(e).slice(0, 160)));
+    n++;
+    await sleep(Math.max(500, ORACLE_MS - (Date.now() - t0)));
+  }
+}
+
+async function main() {
+  log(`keeper up · house ${admin.publicKey.toBase58().slice(0, 6)}`);
+  void oracleLoop();
+  for (;;) {
+    const t0 = Date.now();
     tick++;
-    const hot = await hotAssets().catch(() => new Set(ASSETS.map((a) => a.symbol)));
-    const sbFor = ASSETS.filter((a) => hot.has(a.symbol) || tick % 4 === 0);
-    await refresh(ASSETS, hashes, tick % 2 === 0 || hot.size > 0, sbFor).catch((e) =>
-      log("oracle refresh error", String(e).slice(0, 160)),
-    );
     const jobs: [string, () => Promise<unknown>][] = [
       ["touch", confirmTouches],
       ["settle", settleMarkets],

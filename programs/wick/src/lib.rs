@@ -17,8 +17,8 @@ pub const SEED_BATCH: &[u8] = b"batch";
 pub const SEED_BATCH_VAULT: &[u8] = b"batch_vault";
 pub const SEED_ORDER: &[u8] = b"order";
 /// A computation that never called back releases the batch lock after this long.
-const LOCK_TIMEOUT_SECS: i64 = 180;
-const MIN_DEPOSIT: u64 = 100_000;
+const LOCK_TIMEOUT_SECS: i64 = 60;
+const MIN_DEPOSIT: u64 = 1_000_000;
 /// Totals are only revealed with at least this many orders; below it, revealing the totals
 /// would leak individual sides and sizes, so the batch is cancelled and fully refunded.
 const MIN_REVEAL_ORDERS: u32 = 3;
@@ -92,6 +92,33 @@ pub mod wick {
         Ok(())
     }
 
+    /// Re-queues init_totals if the first computation never called back.
+    pub fn retry_init_batch(ctx: Context<RetryInitBatch>, computation_offset: u64) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let b = &mut ctx.accounts.batch;
+        require!(
+            b.state == BatchState::Initializing && now > b.busy_since + LOCK_TIMEOUT_SECS,
+            SealedError::BatchBusy
+        );
+        b.busy_since = now;
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
+        let batch_key = ctx.accounts.batch.key();
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            ArgBuilder::new().build(),
+            vec![InitTotalsCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[CallbackAccount { pubkey: batch_key, is_writable: true }],
+            )?],
+            1,
+            0,
+            0,
+        )?;
+        Ok(())
+    }
+
     #[arcium_callback(encrypted_ix = "init_totals")]
     pub fn init_totals_callback(
         ctx: Context<InitTotalsCallback>,
@@ -105,6 +132,7 @@ pub mod wick {
             Err(_) => return Err(SealedError::AbortedComputation.into()),
         };
         let b = &mut ctx.accounts.batch;
+        require!(b.state == BatchState::Initializing, SealedError::BatchOpen);
         b.totals_ct = o.ciphertexts;
         b.totals_nonce = o.nonce;
         b.state = BatchState::Open;
@@ -222,6 +250,7 @@ pub mod wick {
     /// If an order's computation never called back, its owner can take the deposit back
     /// once the lock has timed out. The totals never included it.
     pub fn cancel_stuck_order(ctx: Context<CancelStuckOrder>) -> Result<()> {
+        // The owner signs, so `close = owner` below returns the rent and frees the PDA.
         let now = Clock::get()?.unix_timestamp;
         let b = &mut ctx.accounts.batch;
         let o = &mut ctx.accounts.order;
@@ -250,9 +279,13 @@ pub mod wick {
     pub fn reveal_batch(ctx: Context<RevealBatch>, computation_offset: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let b = &mut ctx.accounts.batch;
-        require!(b.state == BatchState::Open && now >= b.close_ts, SealedError::BatchOpen);
+        let retry = b.state == BatchState::Revealing && now > b.busy_since + LOCK_TIMEOUT_SECS;
         require!(
-            b.busy_since == 0 || now > b.busy_since + LOCK_TIMEOUT_SECS,
+            (b.state == BatchState::Open && now >= b.close_ts) || retry,
+            SealedError::BatchOpen
+        );
+        require!(
+            retry || b.busy_since == 0 || now > b.busy_since + LOCK_TIMEOUT_SECS,
             SealedError::BatchBusy
         );
         if b.order_count < MIN_REVEAL_ORDERS {
@@ -261,6 +294,8 @@ pub mod wick {
             return Ok(());
         }
         b.state = BatchState::Revealing;
+        b.busy_since = now;
+        b.pending_order = Pubkey::default();
         let args = ArgBuilder::new()
             .plaintext_u128(b.totals_nonce)
             .account(b.key(), 8, 64)
@@ -298,6 +333,7 @@ pub mod wick {
         };
         let b = &mut ctx.accounts.batch;
         require!(b.state == BatchState::Revealing, SealedError::BatchOpen);
+        b.busy_since = 0;
         b.yes_total = o.field_0;
         b.no_total = o.field_1;
         b.state = BatchState::Revealed;
@@ -516,10 +552,12 @@ pub struct SealedOrder {
 
 #[derive(Accounts)]
 pub struct CancelStuckOrder<'info> {
+    #[account(mut)]
     pub owner: Signer<'info>,
     #[account(mut)]
     pub batch: Account<'info, SealedBatch>,
-    #[account(mut, has_one = batch, has_one = owner)]
+    /// Closed on cancel so the owner can place a fresh order in the same batch.
+    #[account(mut, has_one = batch, has_one = owner, close = owner)]
     pub order: Account<'info, SealedOrder>,
     #[account(mut, seeds = [SEED_BATCH_VAULT, batch.key().as_ref()], bump = batch.vault_bump)]
     pub batch_vault: Account<'info, TokenAccount>,
@@ -684,6 +722,46 @@ pub struct RevealBatch<'info> {
     /// CHECK: computation_account, checked by the arcium program.
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REVEAL_TOTALS))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[queue_computation_accounts("init_totals", payer)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct RetryInitBatch<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub batch: Box<Account<'info, SealedBatch>>,
+    #[account(
+        init_if_needed,
+        space = 9,
+        payer = payer,
+        seeds = [&SIGN_PDA_SEED],
+        bump,
+        address = derive_sign_pda!(),
+    )]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    #[account(mut, address = derive_mempool_pda!(mxe_account))]
+    /// CHECK: mempool_account, checked by the arcium program.
+    pub mempool_account: UncheckedAccount<'info>,
+    #[account(mut, address = derive_execpool_pda!(mxe_account))]
+    /// CHECK: executing_pool, checked by the arcium program.
+    pub executing_pool: UncheckedAccount<'info>,
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
+    /// CHECK: computation_account, checked by the arcium program.
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_INIT_TOTALS))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,

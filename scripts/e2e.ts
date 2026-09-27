@@ -70,7 +70,7 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
   const spot = Number(acc.readBigInt64LE(off)) * 10 ** acc.readInt32LE(off + 16);
   await send(conn, [
     await mk.methods.buyTicket({ kind: { up: {} }, barrier: new BN(Math.round(spot * (1 + Number(process.env.TOUCH_PCT ?? 1) / 100) * 1e8)), barrier2: new BN(0), stake: new BN(5_000_000), maxPriceBps: 9_500 })
-      .accountsPartial({ owner: user.publicKey, book, mint, ownerToken: ata, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount) })
+      .accountsPartial({ owner: user.publicKey, book, mint, ownerToken: ata, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount), sbFeed: new PublicKey(d.oracles.SOL.sbQuote) })
       .instruction(),
   ], [user]);
   const tickets = await mk.account.touchTicket.all([{ memcmp: { offset: 40, bytes: user.publicKey.toBase58() } }]);

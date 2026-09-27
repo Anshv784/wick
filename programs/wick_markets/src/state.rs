@@ -7,15 +7,20 @@ pub const SHARE_UNIT: u64 = 1_000_000;
 
 pub const BPS: u64 = 10_000;
 /// Oracle prints used for settlement must land within this window after expiry.
-/// Settlement prints must land within this window after expiry. Kept short so a settler
-/// cannot shop for a favourable print; the keeper refreshes both feeds every few seconds.
-pub const SETTLE_WINDOW_SECS: i64 = 120;
+/// Settlement prints must land within this window after expiry. Within it, a frozen market
+/// can still settle once the oracles agree, so timing a disagreeing print can't force a void.
+pub const SETTLE_WINDOW_SECS: i64 = 300;
 /// Unconfirmed touch tickets can be expired this long after the market closes.
 pub const TOUCH_GRACE_SECS: i64 = 600;
 /// A frozen or unsettled market can be voided (50/50 redemption) after this delay.
 pub const VOID_DELAY_SECS: i64 = 86_400;
 /// Max staleness of a spot price used to quote a touch ticket.
-pub const QUOTE_MAX_AGE_SECS: u64 = 30;
+pub const QUOTE_MAX_AGE_SECS: u64 = 20;
+/// Max age of the Switchboard quote used as the second opinion on a ticket quote.
+pub const QUOTE_SB_MAX_AGE_SECS: i64 = 60;
+/// "↑ before ↓" confirmations must use prints this fresh, so the order of events is fixed
+/// in real time and a later touch can't be passed off as an earlier one.
+pub const ORDERED_FRESH_SECS: i64 = 20;
 /// Pyth and Switchboard prints confirming a touch must be this close in time.
 pub const TOUCH_SYNC_SECS: i64 = 30;
 

@@ -9,7 +9,7 @@ use crate::state::{TouchKind, BPS};
 use anchor_lang::prelude::*;
 
 const SECS_PER_YEAR: f64 = 31_536_000.0;
-/// Quotes are clamped into [MIN, MAX] so no ticket is free or a sure loss for the house.
+/// Quotes floor at MIN (no free tickets); quotes above MAX are refused (no sure losses).
 pub const MIN_PRICE_BPS: u64 = 100;
 pub const MAX_PRICE_BPS: u64 = 9_500;
 
@@ -112,10 +112,12 @@ pub fn touch_fair_bps(
     Ok((p * BPS as f64) as u64)
 }
 
-/// Quoted ticket price in bps: fair probability plus house margin, clamped.
-pub fn touch_quote_bps(fair_bps: u64, margin_bps: u16) -> u64 {
+/// Quoted ticket price in bps: fair probability plus house margin. Floors at MIN; anything
+/// above MAX is a near-certain touch and is refused rather than sold below fair value.
+pub fn touch_quote_bps(fair_bps: u64, margin_bps: u16) -> Result<u64> {
     let priced = fair_bps + fair_bps * margin_bps as u64 / BPS;
-    priced.clamp(MIN_PRICE_BPS, MAX_PRICE_BPS)
+    require!(priced <= MAX_PRICE_BPS, WickError::InvalidParams);
+    Ok(priced.max(MIN_PRICE_BPS))
 }
 
 pub fn payout_for(stake: u64, price_bps: u64) -> Result<u64> {
@@ -140,6 +142,13 @@ mod tests {
         let (out, y, n) = fpmm_buy(100_000_000, 100_000_000, 50_000_000).unwrap();
         assert!(out > 50_000_000);
         assert!(n * 10_000 / (y + n) > 5_000);
+    }
+
+    #[test]
+    fn near_certain_touches_are_refused() {
+        assert!(touch_quote_bps(9_000, 800).is_err());
+        assert_eq!(touch_quote_bps(5_000, 800).unwrap(), 5_400);
+        assert_eq!(touch_quote_bps(10, 800).unwrap(), MIN_PRICE_BPS);
     }
 
     #[test]

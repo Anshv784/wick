@@ -150,6 +150,9 @@
           "name": "price_update"
         },
         {
+          "name": "sb_feed"
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },

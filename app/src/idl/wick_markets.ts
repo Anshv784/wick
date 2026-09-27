@@ -156,6 +156,9 @@ export type WickMarkets = {
           "name": "priceUpdate"
         },
         {
+          "name": "sbFeed"
+        },
+        {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },

@@ -57,6 +57,7 @@ export function TouchPanel({
     const fair = touchFairBps(kind, s, barrier, barrier2, b.volBps, tLeft);
     if (fair == null) return null;
     const price = touchQuoteBps(fair, b.marginBps);
+    if (price == null) return null;
     const st = Number(stake) || 0;
     const payout = (st * 10_000) / price;
     const capacity = b.free.toNumber() / 1e6;
@@ -74,18 +75,19 @@ export function TouchPanel({
   }, [kind, Math.round(upper * 100), Math.round(lower * 100)]);
 
   const pythAccount = ORACLES?.[symbol]?.pythAccount;
+  const sbQuote = ORACLES?.[symbol]?.sbQuote;
 
   async function buy() {
-    if (!wallet || !quote || !pythAccount) return;
+    if (!wallet || !quote || !pythAccount || !sbQuote) return;
     setBusy(true);
     try {
-      const sig = await buyTicket(wallet, k, new PublicKey(pythAccount), {
+      const sig = await buyTicket(wallet, k, new PublicKey(pythAccount), new PublicKey(sbQuote), {
         kind,
         barrier,
         barrier2,
         stake: Number(stake),
         // Allow a little drift between the UI quote and the on-chain spot.
-        maxPriceBps: Math.min(9_500, Math.ceil(quote.price * 1.05)),
+        maxPriceBps: Math.min(9_500, Math.ceil(quote.price * 1.08)),
       });
       push({ kind: "ok", title: `Touch ticket live · pays $${fmtNum(quote.payout)}`, sig });
       onBought();

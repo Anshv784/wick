@@ -35,7 +35,7 @@ export const LIFECYCLE = `stateDiagram-v2
 export const SETTLEMENT = `flowchart LR
   A[settle_market after expiry] --> B{Pyth push feed<br/>= market's pinned account?}
   B -- no --> X[reject]
-  B -- yes --> C{Both prints within<br/>expiry … expiry + 120s?}
+  B -- yes --> C{Both prints within<br/>expiry … expiry + 5 min?}
   C -- no --> X
   C -- yes --> D{Same side of strike?}
   D -- no --> F[❄ Frozen]
@@ -65,7 +65,7 @@ export const TOUCH = `sequenceDiagram
   participant H as House vault
   participant K as Keeper (anyone)
   T->>M: buy_ticket(level, stake)
-  M->>M: quote from pinned Pyth feed (≤30s old)
+  M->>M: quote off Pyth (≤20s) and Switchboard, whichever is less favourable to the buyer
   M->>H: lock full payout
   Note over K: watches both feeds
   K->>M: confirm_touch(Pyth print, Switchboard quote)

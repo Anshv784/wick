@@ -14,11 +14,18 @@ pub struct Settle<'info> {
 }
 
 /// Permissionless. Both oracles must print inside the settlement window and land on the
-/// same side of the strike within the allowed gap; otherwise the market freezes.
+/// same side of the strike within the allowed gap; otherwise the market freezes (and can be
+/// retried until the window closes).
 pub fn settle_market(ctx: Context<Settle>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let m = &mut ctx.accounts.market;
-    require!(m.status == MarketStatus::Open, WickError::MarketNotOpen);
+    // A frozen market can still settle while the window is open: freezing on one moment of
+    // disagreement would let anyone time a print to force a 50/50 void.
+    require!(
+        m.status == MarketStatus::Open
+            || (m.status == MarketStatus::Frozen && now <= m.expiry + SETTLE_WINDOW_SECS),
+        WickError::MarketNotOpen
+    );
     require!(now >= m.expiry, WickError::NotExpired);
 
     let p = read_pyth_pinned(&ctx.accounts.price_update, &m.oracle)?;

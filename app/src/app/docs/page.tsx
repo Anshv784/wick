@@ -133,14 +133,17 @@ P(↑ before ↓) = min( ln(spot / low) / ln(high / low),  P(touch high) )`}
             head={["Threat", "Mitigation"]}
             rows={[
               ["One oracle is wrong or manipulated", "Both must agree on side and within max gap, or the market freezes"],
-              ["Settler shops for a favourable print", "Settlement only accepts the market's pinned Pyth push feed, printed within 120s of expiry"],
-              ["Stale touch quotes", "Quotes use the pinned push feed, at most 30s old"],
+              ["Settler shops for a favourable print", "Settlement only accepts the market's pinned Pyth push feed, printed within 5 minutes of expiry; a freeze can still resolve if they agree later in the window"],
+              ["Stale touch quotes", "Quotes use the pinned push feed (≤20s old) and price off whichever oracle is less favourable to the buyer"],
               ["A single-feed wick", "Touches need both oracles through the level, within 30s of each other"],
               ["House insolvency", "Full payout is reserved at purchase; capacity is checked on-chain"],
               ["Frozen funds", "Anyone can void after 24h; shares redeem at 0.50, fully backed"],
-              ["Small sealed batches leak orders", "Totals are revealed only with ≥ 3 orders; otherwise full refund, nothing revealed"],
+              ["Small sealed batches leak orders", "Totals are revealed only with ≥ 3 orders; otherwise full refund, nothing revealed. Sybil orders can still shrink the anonymity set, a known limit of batch privacy."],
               ["Late MPC callback double-counts", "Callbacks must match the batch's pending order and expected state"],
               ["Someone front-runs the sealed batch", "Only the market creator can open its batch"],
+              ["Near-certain touch tickets", "Quotes above 95% are refused, not clamped"],
+              ["“↑ before ↓” order disputes", "Its confirmations must use prints under 20s old, so the order of events is fixed in real time"],
+              ["Stuck MPC computations", "Order payouts, batch reveals and inits can all be re-queued after a timeout"],
             ]}
           />
           <P>These are unaudited devnet contracts using a test USDC mint.</P>

@@ -6,6 +6,7 @@ import {
   PythSolanaReceiver,
 } from "@pythnetwork/pyth-solana-receiver";
 import * as sb from "@switchboard-xyz/on-demand";
+import { ComputeBudgetProgram, Ed25519Program, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { admin, AssetCfg, conn, crossbar, log, PYTH_SHARD, sbQueue, wallet } from "./lib";
 
 // Pyth Core (since 2026-08-26): Hermes needs an API key and Solana uses the pro-compatible programs.
@@ -54,13 +55,28 @@ export async function pushSwitchboard(feedHash: string) {
     numSignatures: 1,
     payer: admin.publicKey,
   });
-  const tx = await sb.asV0Tx({
-    connection: conn,
-    ixs,
-    signers: [admin],
-    computeUnitPrice: 20_000,
-    computeUnitLimitMultiple: 1.3,
+  const all = sb.finalizeManagedUpdateInstructions([
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 20_000 }),
+    ...ixs,
+  ]);
+  // The devnet quote program still checks absolute Ed25519 instruction indices, while this SDK
+  // writes Solana's "current instruction" sentinel (0xffff). Rewrite them to absolute indices.
+  all.forEach((ix, i) => {
+    if (!ix.programId.equals(Ed25519Program.programId)) return;
+    const n = ix.data[0];
+    for (let k = 0; k < n; k++) {
+      const rec = 2 + k * 14;
+      for (const off of [2, 6, 12]) ix.data.writeUInt16LE(i, rec + off);
+    }
   });
+  const msg = new TransactionMessage({
+    payerKey: admin.publicKey,
+    recentBlockhash: (await conn.getLatestBlockhash()).blockhash,
+    instructions: all,
+  }).compileToV0Message();
+  const tx = new VersionedTransaction(msg);
+  tx.sign([admin]);
   const sig = await conn.sendTransaction(tx, { preflightCommitment: "processed" });
   await conn.confirmTransaction(sig, "confirmed");
   return sig;

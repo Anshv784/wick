@@ -4,6 +4,28 @@
   "sealedProgram": "8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT",
   "mint": "3B18Hyf4Btws8q1rue6FLgnKqyXQWF2n23dokdRUP2dA",
   "house": "Cbdvwy6Dm7tbCsLP3nw4Umz29BLNQkNwCBDDDRrkbpTZ",
-  "markets": [],
-  "arciumClusterOffset": 456
+  "markets": [
+    "HAaqi5LzfevD8XooFtJznkCbniFsLPSF6DPuhtEfaoon",
+    "AjETwuS1GZaYdtGN1GZu4r4cuLggktP8CduGr5xX24Et",
+    "ECvMLJwiqAovBom6rYvErc4rb3WPECRiuP1TtoHcaF6E",
+    "7ENgijvS8dektzCmk8ZnUBXjJmgdn2RapEVWd8ZKSrTX"
+  ],
+  "arciumClusterOffset": 456,
+  "oracles": {
+    "SOL": {
+      "pythAccount": "CUzoAPFWgWz1pVuL9iqV831wwzta2JXbQzrdRqERoNC8",
+      "sbQuote": "6H6DEJh5AL9rvsjfzWpH4nQtg9M3Y49uV4ZhJbvNDt67",
+      "sbFeedHash": "0x133b47d90bcf5266f20c8df877692940d7714bfffabb5ec8cd8e0cefb76bc4c4"
+    },
+    "BTC": {
+      "pythAccount": "2bjcsUfFR2e9FLcgSW4HhLxJVsn3AMJQ7PSJJwhCSX15",
+      "sbQuote": "AjGi9ayZk6R9f9N9kStzW221knoJqVnu51cPadFPAAD7",
+      "sbFeedHash": "0x3c625a98783ce1eedfca1418da4bf090db2f8dea3578e7cb8957effeeae5824f"
+    },
+    "ETH": {
+      "pythAccount": "6tGrqWiJtv4pbsFqCNtfZTvNoss33HwPciuJFeMe3aJA",
+      "sbQuote": "JAo4drX9qLn6ZBfLvMPJYW94KdNq9ntsL4MbbEvNyEMF",
+      "sbFeedHash": "0x8927ab3f693d1ac1f19d788a82fa1f7c66101855bf482f437446efe2a365d7c3"
+    }
+  }
 }

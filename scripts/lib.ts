@@ -51,7 +51,7 @@ const job = (url: string, jsonPath: string) => ({
 });
 
 function feed(name: string, jobs: ReturnType<typeof job>[]) {
-  return { name, jobs, minJobResponses: 2, minOracleSamples: 1, maxJobRangePct: 1 } as IOracleFeed;
+  return { name, jobs, minJobResponses: 2, minOracleSamples: 1, maxJobRangePct: 1_000_000_000 } as IOracleFeed;
 }
 
 export const ASSETS: AssetCfg[] = [

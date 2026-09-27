@@ -6,7 +6,7 @@ use crate::state::{OracleSpec, BPS, PRICE_DECIMALS};
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::{PriceUpdateV2, VerificationLevel};
 use switchboard_on_demand::on_demand::accounts::pull_feed::PRECISION;
-use switchboard_on_demand::on_demand::oracle_quote::quote_account::SwitchboardQuote;
+use switchboard_on_demand::on_demand::oracle_quote::quote_account::QUOTE_DISCRIMINATOR;
 use switchboard_on_demand::QUOTE_PROGRAM_ID;
 
 const SLOT_MS: i64 = 400;
@@ -44,7 +44,7 @@ pub fn read_pyth(update: &PriceUpdateV2, spec: &OracleSpec) -> Result<Print> {
     })
 }
 
-/// Reads a Switchboard canonical OracleQuote account (written by the quote program after
+/// Reads a Switchboard canonical OracleQuote account (written only by the quote program after
 /// Ed25519-verified oracle signatures). Quotes carry a slot, not a timestamp, so the
 /// print time is estimated from the slot distance to the current clock.
 pub fn read_switchboard(feed: &AccountInfo, spec: &OracleSpec, clock: &Clock) -> Result<Print> {
@@ -54,19 +54,41 @@ pub fn read_switchboard(feed: &AccountInfo, spec: &OracleSpec, clock: &Clock) ->
         WickError::OracleMismatch
     );
     let data = feed.try_borrow_data()?;
-    require!(data.len() > 8, WickError::OracleInvalid);
-    let quote = SwitchboardQuote::deserialize(&mut &data[8..])
-        .map_err(|_| WickError::OracleInvalid)?;
-    require!(&quote.tail_discriminator == b"SBOD", WickError::OracleInvalid);
-    let info = quote.feeds.first().ok_or(WickError::OracleInvalid)?;
-    let value = info.feed_value();
+    let (value, slot) = parse_quote(&data).ok_or(WickError::OracleInvalid)?;
     require!(value > 0, WickError::OracleInvalid);
-    require!(quote.slot <= clock.slot, WickError::OracleInvalid);
-    let age_ms = (clock.slot - quote.slot) as i64 * SLOT_MS;
+    require!(slot <= clock.slot, WickError::OracleInvalid);
+    let age_ms = (clock.slot - slot) as i64 * SLOT_MS;
     Ok(Print {
         price: rescale(value, -(PRECISION as i32))?,
         ts: clock.unix_timestamp - age_ms / 1000,
     })
+}
+
+/// Parses a canonical quote account:
+/// `"SBOracle" | queue (32) | u16 len | Ed25519 ix data`, where the Ed25519 data is
+/// `n | pad | offsets (14·n) | pubkeys+sigs | message | oracle idxs (n) | slot u64 | version u8 | "SBOD"`
+/// and the message is `header (32) | feeds (49 each: id 32, value i128, min samples u8)`.
+/// Returns the first feed's value (18 decimals) and the quote slot.
+fn parse_quote(data: &[u8]) -> Option<(i128, u64)> {
+    if data.get(..8)? != QUOTE_DISCRIMINATOR {
+        return None;
+    }
+    let len = u16::from_le_bytes(data.get(40..42)?.try_into().ok()?) as usize;
+    let ix = data.get(42..42 + len)?;
+    let n = *ix.first()? as usize;
+    if n == 0 || ix.get(ix.len() - 4..)? != b"SBOD" {
+        return None;
+    }
+    let msg_off = u16::from_le_bytes(ix.get(10..12)?.try_into().ok()?) as usize;
+    let msg_len = u16::from_le_bytes(ix.get(12..14)?.try_into().ok()?) as usize;
+    if msg_len < 32 + 49 || msg_off + msg_len + n + 13 != ix.len() {
+        return None;
+    }
+    let feed = ix.get(msg_off + 32..msg_off + 32 + 49)?;
+    let value = i128::from_le_bytes(feed.get(32..48)?.try_into().ok()?);
+    let suffix = msg_off + msg_len + n;
+    let slot = u64::from_le_bytes(ix.get(suffix..suffix + 8)?.try_into().ok()?);
+    Some((value, slot))
 }
 
 /// Relative gap between the two prints, in bps of the lower one.

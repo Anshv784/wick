@@ -114,7 +114,7 @@ async function ensureCompDefs() {
       sealed.programId,
       fs.readFileSync(path.join(ROOT, `build/${name}.arcis`)),
       true,
-      500,
+      Number(process.env.UPLOAD_CHUNK ?? 40),
       { skipPreflight: true, preflightCommitment: "confirmed", commitment: "confirmed" },
     );
     log("circuit uploaded", name);

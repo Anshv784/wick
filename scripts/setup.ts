@@ -17,6 +17,7 @@ import {
   getLookupTableAddress,
   getMempoolAccAddress,
   getMXEAccAddress,
+  getRawCircuitAccAddress,
   uploadCircuit,
 } from "@arcium-hq/client";
 import {
@@ -84,7 +85,7 @@ async function ensureOracles(d: Deployment) {
   }
 }
 
-const CIRCUITS = ["init_totals", "place_order", "reveal_totals", "settle_order"] as const;
+const CIRCUITS = ["init_totals", "place_order", "reveal_totals", "reveal_order"] as const;
 
 async function ensureCompDefs() {
   const arcium = getArciumProgram(sealed.provider as never);
@@ -101,7 +102,7 @@ async function ensureCompDefs() {
         init_totals: "initInitTotalsCompDef",
         place_order: "initPlaceOrderCompDef",
         reveal_totals: "initRevealTotalsCompDef",
-        settle_order: "initSettleOrderCompDef",
+        reveal_order: "initRevealOrderCompDef",
       }[name] as "initInitTotalsCompDef";
       await sealed.methods[method]()
         .accountsPartial({ compDefAccount: compDef, payer: admin.publicKey, mxeAccount, addressLookupTable: lut })
@@ -117,7 +118,14 @@ async function ensureCompDefs() {
       Number(process.env.UPLOAD_CHUNK ?? 40),
       { skipPreflight: true, preflightCommitment: "confirmed", commitment: "confirmed" },
     );
-    log("circuit uploaded", name);
+    // uploadCircuit skips accounts that already have the right size, so a rate-limited
+    // upload can leave a truncated circuit behind. Verify the bytes before trusting it.
+    const raw = await conn.getAccountInfo(getRawCircuitAccAddress(compDef, 0));
+    const local = fs.readFileSync(path.join(ROOT, `build/${name}.arcis`));
+    if (!raw || !raw.data.subarray(9, 9 + local.length).equals(local)) {
+      throw new Error(`circuit ${name} on-chain bytes do not match build/${name}.arcis`);
+    }
+    log("circuit verified", name);
   }
 }
 

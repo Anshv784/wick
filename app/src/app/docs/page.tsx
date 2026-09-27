@@ -120,7 +120,8 @@ P(↑ before ↓) = min( ln(spot / low) / ln(high / low),  P(touch high) )`}
           <P>
             Your side and size are encrypted in the browser to the Arcium MXE key. The cluster adds each order into running YES/NO
             totals that stay encrypted. When the batch closes, only the two totals are revealed, and everyone fills at{" "}
-            <Code>YES_total / (YES_total + NO_total)</Code>. Payouts are computed in MPC and revealed only after the market settles.
+            <Code>YES_total / (YES_total + NO_total)</Code>. Individual orders stay sealed for the whole life of the market; each is opened
+            only after resolution, to pay it out (the payout would reveal the same numbers anyway).
           </P>
           <Mermaid chart={SEALED} />
         </Section>

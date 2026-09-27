@@ -5,8 +5,8 @@ use arcis::*;
 /// Orders are encrypted (side + size). The cluster keeps running YES/NO totals under MXE
 /// encryption, reveals only the two totals when the batch closes, and every order fills
 /// at the single clearing price `yes_total / (yes_total + no_total)`. Individual sides
-/// and sizes are never revealed; only each order's final payout is, after the market
-/// has settled.
+/// and sizes stay hidden while the market trades; each order is opened only after the
+/// market resolves, to pay it out.
 #[encrypted]
 mod circuits {
     use arcis::*;
@@ -58,34 +58,12 @@ mod circuits {
         (totals.yes.reveal(), totals.no.reveal())
     }
 
-    /// Payout for one order once the market is resolved. Winners split the whole batch
-    /// pro rata (equivalent to buying shares at the clearing price); unused deposit is
-    /// returned. A void market or a one-sided batch refunds the full deposit.
+    /// Opens one order once its market has resolved, so the program can pay it out. The
+    /// payout itself (and the refund of unused deposit) would reveal the same numbers, so
+    /// this leaks nothing beyond what settlement already makes public.
     #[instruction]
-    pub fn settle_order(
-        order_ctxt: Enc<Mxe, OrderIn>,
-        deposit: u64,
-        yes_won: bool,
-        voided: bool,
-        yes_total: u64,
-        no_total: u64,
-    ) -> u64 {
+    pub fn reveal_order(order_ctxt: Enc<Mxe, OrderIn>) -> (bool, u64) {
         let order = order_ctxt.to_arcis();
-        let pool = yes_total as u128 + no_total as u128;
-        let side_total = if order.yes { yes_total } else { no_total } as u128;
-        let safe_div = if side_total == 0 { 1u128 } else { side_total };
-        let won = order.yes == yes_won;
-        let winnings = if won {
-            order.amount as u128 * pool / safe_div
-        } else {
-            0u128
-        };
-        let one_sided = yes_total == 0 || no_total == 0;
-        let payout = if voided || one_sided {
-            deposit as u128
-        } else {
-            winnings + (deposit - order.amount) as u128
-        };
-        (payout as u64).reveal()
+        (order.yes.reveal(), order.amount.reveal())
     }
 }

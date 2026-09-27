@@ -11,7 +11,7 @@ use wick_markets::{Market, MarketStatus, Side};
 const COMP_DEF_OFFSET_INIT_TOTALS: u32 = comp_def_offset("init_totals");
 const COMP_DEF_OFFSET_PLACE_ORDER: u32 = comp_def_offset("place_order");
 const COMP_DEF_OFFSET_REVEAL_TOTALS: u32 = comp_def_offset("reveal_totals");
-const COMP_DEF_OFFSET_SETTLE_ORDER: u32 = comp_def_offset("settle_order");
+const COMP_DEF_OFFSET_REVEAL_ORDER: u32 = comp_def_offset("reveal_order");
 
 pub const SEED_BATCH: &[u8] = b"batch";
 pub const SEED_BATCH_VAULT: &[u8] = b"batch_vault";
@@ -46,7 +46,7 @@ pub mod wick {
         Ok(())
     }
 
-    pub fn init_settle_order_comp_def(ctx: Context<InitSettleOrderCompDef>) -> Result<()> {
+    pub fn init_reveal_order_comp_def(ctx: Context<InitRevealOrderCompDef>) -> Result<()> {
         init_computation_def(ctx.accounts, None)?;
         Ok(())
     }
@@ -305,44 +305,40 @@ pub mod wick {
         Ok(())
     }
 
-    /// Once the Wick market is settled or voided, computes this order's payout in MPC.
+    /// Once the Wick market is settled or voided, opens this order in MPC so it can be paid.
+    /// Can be re-queued if a previous computation never called back.
     pub fn settle_order(ctx: Context<SettleOrder>, computation_offset: u64) -> Result<()> {
-        let b = &ctx.accounts.batch;
-        require!(b.state == BatchState::Revealed, SealedError::BatchOpen);
-        require!(ctx.accounts.order.state == OrderState::Placed, SealedError::OrderState);
+        require!(ctx.accounts.batch.state == BatchState::Revealed, SealedError::BatchOpen);
+        let st = ctx.accounts.order.state;
         require!(
-            *ctx.accounts.market.owner == wick_markets::ID,
-            SealedError::MarketNotResolved
+            st == OrderState::Placed || st == OrderState::Settling,
+            SealedError::OrderState
         );
-        let market = load_market(&ctx.accounts.market)?;
-        let (yes_won, voided) = match (market.status, market.outcome) {
-            (MarketStatus::Settled, Some(side)) => (side == Side::Yes, false),
-            (MarketStatus::Voided, _) => (false, true),
-            _ => return err!(SealedError::MarketNotResolved),
-        };
+        resolution(&ctx.accounts.market)?;
 
         let ord = &mut ctx.accounts.order;
         ord.state = OrderState::Settling;
         let args = ArgBuilder::new()
             .plaintext_u128(ord.order_nonce)
             .account(ord.key(), 8, 64)
-            .plaintext_u64(ord.deposit)
-            .plaintext_bool(yes_won)
-            .plaintext_bool(voided)
-            .plaintext_u64(b.yes_total)
-            .plaintext_u64(b.no_total)
             .build();
 
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
         let order_key = ctx.accounts.order.key();
+        let batch_key = ctx.accounts.batch.key();
+        let market_key = ctx.accounts.market.key();
         queue_computation(
             ctx.accounts,
             computation_offset,
             args,
-            vec![SettleOrderCallback::callback_ix(
+            vec![RevealOrderCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
-                &[CallbackAccount { pubkey: order_key, is_writable: true }],
+                &[
+                    CallbackAccount { pubkey: order_key, is_writable: true },
+                    CallbackAccount { pubkey: batch_key, is_writable: false },
+                    CallbackAccount { pubkey: market_key, is_writable: false },
+                ],
             )?],
             1,
             0,
@@ -351,21 +347,41 @@ pub mod wick {
         Ok(())
     }
 
-    #[arcium_callback(encrypted_ix = "settle_order")]
-    pub fn settle_order_callback(
-        ctx: Context<SettleOrderCallback>,
-        output: SignedComputationOutputs<SettleOrderOutput>,
+    /// Winners split the whole batch pro rata (the same as buying shares at the clearing
+    /// price); unused deposit comes back. A void market or one-sided batch refunds in full.
+    #[arcium_callback(encrypted_ix = "reveal_order")]
+    pub fn reveal_order_callback(
+        ctx: Context<RevealOrderCallback>,
+        output: SignedComputationOutputs<RevealOrderOutput>,
     ) -> Result<()> {
-        let payout = match output.verify_output(
+        let o = match output.verify_output(
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(SettleOrderOutput { field_0 }) => field_0,
+            Ok(RevealOrderOutput { field_0 }) => field_0,
             Err(_) => return Err(SealedError::AbortedComputation.into()),
         };
+        let (yes, amount) = (o.field_0, o.field_1);
+        let b = &ctx.accounts.batch;
         let ord = &mut ctx.accounts.order;
         require!(ord.state == OrderState::Settling, SealedError::OrderState);
-        ord.payout = payout;
+        require_keys_eq!(ord.batch, b.key(), SealedError::InvalidParams);
+        require_keys_eq!(b.market, ctx.accounts.market.key(), SealedError::InvalidParams);
+        let (yes_won, voided) = resolution(&ctx.accounts.market)?;
+
+        let amount = amount.min(ord.deposit);
+        let (yes_total, no_total) = (b.yes_total as u128, b.no_total as u128);
+        ord.payout = if voided || yes_total == 0 || no_total == 0 {
+            ord.deposit
+        } else {
+            let side_total = if yes { yes_total } else { no_total };
+            let winnings = if yes == yes_won {
+                amount as u128 * (yes_total + no_total) / side_total
+            } else {
+                0
+            };
+            u64::try_from(winnings).map_err(|_| SealedError::InvalidParams)? + (ord.deposit - amount)
+        };
         ord.state = OrderState::Settled;
         Ok(())
     }
@@ -387,6 +403,17 @@ pub mod wick {
             &ctx.accounts.token_program,
             amount,
         )
+    }
+}
+
+/// Market outcome as (yes_won, voided). The market must be back on base and resolved.
+fn resolution(info: &AccountInfo) -> Result<(bool, bool)> {
+    require!(*info.owner == wick_markets::ID, SealedError::MarketNotResolved);
+    let market = load_market(info)?;
+    match (market.status, market.outcome) {
+        (MarketStatus::Settled, Some(side)) => Ok((side == Side::Yes, false)),
+        (MarketStatus::Voided, _) => Ok((false, true)),
+        _ => err!(SealedError::MarketNotResolved),
     }
 }
 
@@ -668,7 +695,7 @@ pub struct RevealBatch<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[queue_computation_accounts("settle_order", payer)]
+#[queue_computation_accounts("reveal_order", payer)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
 pub struct SettleOrder<'info> {
@@ -700,7 +727,7 @@ pub struct SettleOrder<'info> {
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
     /// CHECK: computation_account, checked by the arcium program.
     pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SETTLE_ORDER))]
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REVEAL_ORDER))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,
@@ -773,11 +800,11 @@ pub struct RevealTotalsCallback<'info> {
     pub batch: Account<'info, SealedBatch>,
 }
 
-#[callback_accounts("settle_order")]
+#[callback_accounts("reveal_order")]
 #[derive(Accounts)]
-pub struct SettleOrderCallback<'info> {
+pub struct RevealOrderCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SETTLE_ORDER))]
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REVEAL_ORDER))]
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
@@ -790,6 +817,9 @@ pub struct SettleOrderCallback<'info> {
     pub instructions_sysvar: UncheckedAccount<'info>,
     #[account(mut)]
     pub order: Account<'info, SealedOrder>,
+    pub batch: Account<'info, SealedBatch>,
+    /// CHECK: Wick market; validated in `resolution`.
+    pub market: UncheckedAccount<'info>,
 }
 
 // ---------------------------------------------------------------- comp def accounts
@@ -821,7 +851,7 @@ macro_rules! comp_def_accounts {
 comp_def_accounts!(InitInitTotalsCompDef, "init_totals");
 comp_def_accounts!(InitPlaceOrderCompDef, "place_order");
 comp_def_accounts!(InitRevealTotalsCompDef, "reveal_totals");
-comp_def_accounts!(InitSettleOrderCompDef, "settle_order");
+comp_def_accounts!(InitRevealOrderCompDef, "reveal_order");
 
 // ---------------------------------------------------------------- events / errors
 

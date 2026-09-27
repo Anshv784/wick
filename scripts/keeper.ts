@@ -126,6 +126,9 @@ async function settleMarkets() {
   }
 }
 
+const REQUEUE_MS = 180_000;
+const queuedAt = new Map<string, number>();
+
 async function crankSealed() {
   // Size filters skip accounts left over from earlier program layouts.
   const batches = await sealed.account.sealedBatch.all([{ dataSize: sealed.account.sealedBatch.size }]);
@@ -148,7 +151,11 @@ async function crankSealed() {
     if (!market || key(market.status) === "open" || key(market.status) === "frozen") continue;
     const orders = await sealed.account.sealedOrder.all([{ memcmp: { offset: 8 + 64 + 16, bytes: batch.toBase58() } }]);
     for (const o of orders) {
-      if (key(o.account.state) !== "placed") continue;
+      // "settling" orders are re-queued: a computation that never called back must not strand funds.
+      if (!["placed", "settling"].includes(key(o.account.state))) continue;
+      const last = queuedAt.get(o.publicKey.toBase58()) ?? 0;
+      if (Date.now() - last < REQUEUE_MS) continue;
+      queuedAt.set(o.publicKey.toBase58(), Date.now());
       const offset = randomOffset();
       try {
         await sealed.methods
@@ -158,7 +165,7 @@ async function crankSealed() {
             batch,
             order: o.publicKey,
             market: b.market,
-            ...arciumAccounts(offset, "settle_order"),
+            ...arciumAccounts(offset, "reveal_order"),
           })
           .rpc({ commitment: "confirmed" });
         log(`sealed order settling ${o.publicKey.toBase58().slice(0, 6)}`);
@@ -169,11 +176,16 @@ async function crankSealed() {
   }
 }
 
+// RPC and oracle endpoints drop connections now and then; a stray rejection must never
+// take the keeper down, so log it and let the next tick retry.
+process.on("unhandledRejection", (e) => log("unhandled", String(e).slice(0, 160)));
+process.on("uncaughtException", (e) => log("uncaught", String(e).slice(0, 160)));
+
 async function main() {
   log(`keeper up · ${d.markets.length} markets · house ${admin.publicKey.toBase58().slice(0, 6)}`);
   for (;;) {
     const t0 = Date.now();
-    await refreshAll(ASSETS, hashes);
+    await refreshAll(ASSETS, hashes).catch((e) => log("oracle refresh error", String(e).slice(0, 160)));
     for (const [name, fn] of [
       ["touch", confirmTouches],
       ["settle", settleMarkets],

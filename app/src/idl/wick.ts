@@ -343,16 +343,16 @@ export type Wick = {
       "args": []
     },
     {
-      "name": "initRevealTotalsCompDef",
+      "name": "initRevealOrderCompDef",
       "discriminator": [
-        142,
-        245,
-        67,
-        170,
-        197,
-        84,
-        118,
-        114
+        183,
+        7,
+        155,
+        251,
+        239,
+        100,
+        178,
+        25
       ],
       "accounts": [
         {
@@ -388,16 +388,16 @@ export type Wick = {
       "args": []
     },
     {
-      "name": "initSettleOrderCompDef",
+      "name": "initRevealTotalsCompDef",
       "discriminator": [
+        142,
+        245,
         67,
-        15,
-        39,
-        176,
-        55,
-        232,
-        221,
-        106
+        170,
+        197,
+        84,
+        118,
+        114
       ],
       "accounts": [
         {
@@ -866,6 +866,75 @@ export type Wick = {
       ]
     },
     {
+      "name": "revealOrderCallback",
+      "docs": [
+        "Winners split the whole batch pro rata (the same as buying shares at the clearing",
+        "price); unused deposit comes back. A void market or one-sided batch refunds in full."
+      ],
+      "discriminator": [
+        57,
+        239,
+        252,
+        89,
+        27,
+        108,
+        169,
+        97
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "market"
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "revealOrderOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "revealTotalsCallback",
       "discriminator": [
         57,
@@ -927,7 +996,8 @@ export type Wick = {
     {
       "name": "settleOrder",
       "docs": [
-        "Once the Wick market is settled or voided, computes this order's payout in MPC."
+        "Once the Wick market is settled or voided, opens this order in MPC so it can be paid.",
+        "Can be re-queued if a previous computation never called back."
       ],
       "discriminator": [
         80,
@@ -1038,65 +1108,6 @@ export type Wick = {
         {
           "name": "computationOffset",
           "type": "u64"
-        }
-      ]
-    },
-    {
-      "name": "settleOrderCallback",
-      "discriminator": [
-        35,
-        33,
-        29,
-        174,
-        37,
-        122,
-        99,
-        241
-      ],
-      "accounts": [
-        {
-          "name": "arciumProgram",
-          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
-        },
-        {
-          "name": "compDefAccount"
-        },
-        {
-          "name": "mxeAccount"
-        },
-        {
-          "name": "computationAccount"
-        },
-        {
-          "name": "clusterAccount"
-        },
-        {
-          "name": "instructionsSysvar",
-          "address": "Sysvar1nstructions1111111111111111111111111"
-        },
-        {
-          "name": "order",
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "output",
-          "type": {
-            "defined": {
-              "name": "signedComputationOutputs",
-              "generics": [
-                {
-                  "kind": "type",
-                  "type": {
-                    "defined": {
-                      "name": "settleOrderOutput"
-                    }
-                  }
-                }
-              ]
-            }
-          }
         }
       ]
     },
@@ -2263,6 +2274,42 @@ export type Wick = {
       }
     },
     {
+      "name": "revealOrderOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": {
+              "defined": {
+                "name": "revealOrderOutputStruct0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "revealOrderOutputStruct0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": "bool"
+          },
+          {
+            "name": "field1",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "revealTotalsOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
@@ -2496,22 +2543,6 @@ export type Wick = {
                 "vec": "bool"
               }
             ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "settleOrderOutput",
-      "docs": [
-        "The output of the callback instruction. Provided as a struct with ordered fields",
-        "as anchor does not support tuples and tuple structs yet."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "field0",
-            "type": "u64"
           }
         ]
       }

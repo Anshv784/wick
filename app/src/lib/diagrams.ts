@@ -85,6 +85,6 @@ export const SEALED = `sequenceDiagram
   P->>A: reveal_totals (only if ≥ 3 orders)
   A-->>P: YES total, NO total
   Note over P: market settles on wick_markets
-  P->>A: settle_order(order, outcome, totals)
-  A-->>P: payout (plaintext)
+  P->>A: reveal_order(order)
+  A-->>P: side, size → program computes payout
   T->>P: withdraw_payout`;

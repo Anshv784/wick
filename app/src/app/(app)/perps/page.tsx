@@ -1,0 +1,453 @@
+"use client";
+
+import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { ChartLine, PriceChart } from "@/components/PriceChart";
+import { useToast } from "@/components/Toast";
+import { AmountInput, Button, Row, Segmented } from "@/components/ui";
+import { buyTicket } from "@/lib/actions";
+import { ASSETS, AssetSymbol, assetFromBytes } from "@/lib/assets";
+import { countdown, fmtNum, fmtUsd } from "@/lib/format";
+import { useBook, useMarkets, useNow, usePoll, useUsdc } from "@/lib/hooks";
+import {
+  borrowOwed,
+  closePerp,
+  depositPerp,
+  fetchPerps,
+  liqPrice,
+  openPerp,
+  PERP_SYMBOLS,
+  PERPS_LIVE,
+  pnl,
+  Side,
+  slotIndex,
+  withdrawPerp,
+} from "@/lib/perps";
+import { touchFairBps, touchQuoteBps } from "@/lib/pricing";
+import { useLivePrice } from "@/lib/prices";
+import { ORACLES } from "@/lib/wick";
+
+const LEV_MARKS = [2, 5, 10, 20, 35, 50];
+const SLIPPAGE = 0.005;
+
+export default function PerpsPage() {
+  const wallet = useAnchorWallet();
+  const [symbol, setSymbol] = useState<AssetSymbol>("SOL");
+  const perps = usePoll(() => fetchPerps(wallet?.publicKey), 2500, [wallet?.publicKey.toBase58()]);
+  const tick = useLivePrice(symbol);
+  const m = perps.data?.markets[symbol]?.data;
+  const acc = perps.data?.account?.data;
+
+  const lines: ChartLine[] = useMemo(() => {
+    if (!acc || !m) return [];
+    const out: ChartLine[] = [];
+    (["long", "short"] as Side[]).forEach((side) => {
+      const s = acc.slots[slotIndex(symbol, side)];
+      if (s.size.isZero()) return;
+      const size = s.size.toNumber() / 1e6;
+      const entry = s.entryPrice.toNumber() / 1e8;
+      out.push({ price: entry, color: side === "long" ? "#5ee0a1" : "#ff6b81", title: `${side} entry`, dashed: true });
+      out.push({
+        price: liqPrice(side, size, s.collateral.toNumber() / 1e6, entry, m, borrowOwed(size, s.borrowIdx, m.borrowIdx)),
+        color: "#ff7a1a",
+        title: "liq (both oracles)",
+      });
+    });
+    return out;
+  }, [acc, m, symbol]);
+
+  if (!PERPS_LIVE) return <p className="pt-24 text-center text-muted">Perps aren&apos;t deployed on this network yet.</p>;
+
+  return (
+    <div className="pt-8">
+      <div className="flex flex-wrap items-end gap-6">
+        <div>
+          <p className="num text-[11px] tracking-wide text-flame-2 uppercase">Wick-proof perps</p>
+          <h1 className="font-display mt-1 text-[48px] leading-none tracking-tight">Perpetuals</h1>
+        </div>
+        <div className="ml-auto flex gap-1 rounded-xl border hairline bg-ink p-1">
+          {PERP_SYMBOLS.map((s) => (
+            <AssetTab key={s} s={s} active={s === symbol} onClick={() => setSymbol(s)} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_380px]">
+        <div className="min-w-0 space-y-5">
+          <div className="panel overflow-hidden p-2 pt-4">
+            <PriceChart symbol={symbol} lines={lines} height={440} />
+          </div>
+          <Positions perps={perps.data} refresh={perps.refresh} />
+          <MarketStats m={m} pool={perps.data?.pool?.data} price={tick?.price} />
+        </div>
+        <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+          <OrderPanel symbol={symbol} perps={perps.data} refresh={perps.refresh} />
+          <AccountPanel perps={perps.data} refresh={perps.refresh} />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function AssetTab({ s, active, onClick }: { s: AssetSymbol; active: boolean; onClick: () => void }) {
+  const t = useLivePrice(s);
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-4 py-2 text-left transition ${active ? "bg-ink-3" : "hover:bg-white/[0.03]"}`}
+    >
+      <div className="flex items-center gap-2 text-[13px] font-semibold">
+        <span className="h-2 w-2 rounded-full" style={{ background: ASSETS[s].color }} />
+        {s}-PERP
+      </div>
+      <div className="num text-[12px] text-muted">{t ? fmtUsd(t.price) : "—"}</div>
+    </button>
+  );
+}
+
+type Perps = Awaited<ReturnType<typeof fetchPerps>> | undefined;
+
+function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Perps; refresh: () => void }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const tick = useLivePrice(symbol);
+  const [side, setSide] = useState<Side>("long");
+  const [collateral, setCollateral] = useState("50");
+  const [lev, setLev] = useState(20);
+  const [insure, setInsure] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const m = perps?.markets[symbol]?.data;
+  const acc = perps?.account?.data;
+  const pool = perps?.pool?.data;
+  const credit = acc ? acc.credit.toNumber() / 1e6 : 0;
+  const price = tick?.price ?? 0;
+  const col = Number(collateral) || 0;
+  const size = col * lev;
+  const openFee = m ? (size * m.openFeeBps) / 10_000 : 0;
+  const liq = m && price ? liqPrice(side, size, col - openFee, price, m) : 0;
+  const reserve = Math.min(size, col * 10);
+  const capacity = pool ? (pool.liquidity.toNumber() - pool.reserved.toNumber()) / 1e6 : 0;
+  const insurance = useInsurance(symbol, side, liq, col - openFee);
+
+  async function submit() {
+    if (!wallet || !m) return;
+    setBusy(true);
+    try {
+      const limit = side === "long" ? price * (1 + SLIPPAGE) : price * (1 - SLIPPAGE);
+      const sig = await openPerp(wallet, symbol, side, col, lev, limit);
+      push({ kind: "ok", title: `${lev}x ${side} ${symbol} opened`, body: `Liquidation ≈ ${fmtUsd(liq)} and only if both oracles agree.`, sig, er: true });
+      if (insure && insurance.quote) {
+        try {
+          const s2 = await buyTicket(wallet, insurance.market!, new PublicKey(ORACLES![symbol].pythAccount), new PublicKey(ORACLES![symbol].sbQuote), {
+            kind: side === "long" ? "down" : "up",
+            barrier: liq,
+            barrier2: 0,
+            stake: insurance.quote.stake,
+            maxPriceBps: Math.min(9_500, Math.ceil(insurance.quote.priceBps * 1.08)),
+          });
+          push({ kind: "ok", title: `Insured: pays $${fmtNum(insurance.quote.payout)} if liquidated`, sig: s2 });
+        } catch (e) {
+          push({ kind: "err", title: "Position opened, insurance failed", body: (e as Error).message.slice(0, 160) });
+        }
+      }
+      refresh();
+    } catch (e) {
+      push({ kind: "err", title: "Order failed", body: (e as Error).message.slice(0, 180) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel space-y-4 p-4">
+      <Segmented
+        layoutId="perp-side"
+        value={side}
+        onChange={setSide}
+        options={[
+          { value: "long", label: "Long", activeClass: "text-yes" },
+          { value: "short", label: "Short", activeClass: "text-no" },
+        ]}
+      />
+      <AmountInput label="Collateral" value={collateral} onChange={setCollateral} max={credit} />
+      <div>
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-[11px] text-muted">Leverage</span>
+          <span className="num text-[18px] text-flame">{lev.toFixed(1)}×</span>
+        </div>
+        <input
+          type="range"
+          className="wick-range w-full"
+          min={1.1}
+          max={m?.maxLeverage ?? 50}
+          step={0.1}
+          value={lev}
+          onChange={(e) => setLev(Number(e.target.value))}
+        />
+        <div className="mt-2 flex justify-between">
+          {LEV_MARKS.map((x) => (
+            <button key={x} onClick={() => setLev(x)} className="num text-[11px] text-muted hover:text-paper">
+              {x}×
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl bg-ink px-3.5 py-2.5">
+        <Row k="Position size" v={size ? `$${fmtNum(size)}` : "—"} />
+        <Row k="Entry (oracle)" v={price ? fmtUsd(price) : "—"} />
+        <Row k="Liquidation price" v={liq ? fmtUsd(liq) : "—"} cls="text-flame-2" />
+        <Row k="Open fee" v={`$${fmtNum(openFee, 3)}`} />
+        <Row k="Borrow" v={m ? `${(m.borrowPpmPerHour / 10_000).toFixed(3)}% / h` : "—"} />
+      </div>
+
+      <button
+        onClick={() => setInsure(!insure)}
+        className={`w-full rounded-xl border p-3.5 text-left transition ${insure ? "border-flame/50 bg-flame/5" : "hairline"}`}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-[13px] font-semibold">Liquidation insurance</span>
+          <span className={`h-4 w-7 rounded-full p-0.5 transition ${insure ? "bg-flame" : "bg-line-2"}`}>
+            <span className={`block h-3 w-3 rounded-full bg-ink transition ${insure ? "translate-x-3" : ""}`} />
+          </span>
+        </div>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+          {insurance.quote
+            ? `A touch ticket at your liquidation price: pay $${fmtNum(insurance.quote.stake)}, get $${fmtNum(insurance.quote.payout)} back if it's hit (covers ${countdown(insurance.left)}).`
+            : insurance.reason}
+        </p>
+      </button>
+
+      <Button
+        tone={side === "long" ? "yes" : "no"}
+        busy={busy}
+        disabled={!wallet || !m || !price || col < 1 || col > credit || reserve > capacity}
+        onClick={submit}
+      >
+        {!wallet
+          ? "Connect wallet"
+          : col > credit
+            ? "Deposit USDC below first"
+            : reserve > capacity
+              ? "Exceeds pool capacity"
+              : `${side === "long" ? "Long" : "Short"} ${symbol} ${lev.toFixed(1)}×${insure && insurance.quote ? " + insure" : ""}`}
+      </Button>
+      <p className="flex items-center gap-2 text-[11px] text-muted">
+        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-yes" /> Executes on MagicBlock in ~1s. Liquidation needs Pyth
+        and Switchboard to agree.
+      </p>
+    </div>
+  );
+}
+
+/** Prices a touch ticket at the liquidation price that repays the position's collateral. */
+function useInsurance(symbol: AssetSymbol, side: Side, liq: number, collateral: number) {
+  const markets = useMarkets();
+  const now = useNow(5000);
+  const tick = useLivePrice(symbol);
+  const target = useMemo(() => {
+    const candidates = (markets.data ?? []).filter(
+      (r) => assetFromBytes(r.m.data.symbol)?.symbol === symbol && "open" in (r.m.data.status as object) && r.m.data.expiry.toNumber() > now + 3_600,
+    );
+    return candidates.sort((a, b) => b.m.data.expiry.toNumber() - a.m.data.expiry.toNumber())[0];
+  }, [markets.data, symbol, now]);
+  const book = useBook(target?.key);
+  const b = book.data;
+  const left = b ? b.expiry.toNumber() - now : 0;
+  if (!target || !b) return { quote: null, reason: "No touch book is open for this asset right now.", left, market: undefined };
+  if (!tick || !liq || collateral <= 0) return { quote: null, reason: "Enter a position to see the insurance price.", left, market: target.key };
+  const fair = touchFairBps(side === "long" ? "down" : "up", tick.price, liq, 0, b.volBps, left);
+  const priceBps = fair == null ? null : touchQuoteBps(fair, b.marginBps);
+  if (priceBps == null) return { quote: null, reason: "Liquidation is too close to spot to insure.", left, market: target.key };
+  const payout = collateral;
+  const stake = Math.max(0.1, (payout * priceBps) / 10_000);
+  return { quote: { stake, payout: (stake * 10_000) / priceBps, priceBps }, reason: "", left, market: target.key };
+}
+
+function Positions({ perps, refresh }: { perps: Perps; refresh: () => void }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const [busy, setBusy] = useState<string>();
+  const acc = perps?.account?.data;
+  const rows = acc
+    ? PERP_SYMBOLS.flatMap((s) =>
+        (["long", "short"] as Side[]).map((side) => ({ s, side, slot: acc.slots[slotIndex(s, side)] })),
+      ).filter((r) => !r.slot.size.isZero())
+    : [];
+  return (
+    <div className="panel p-5">
+      <h3 className="font-display text-[24px] tracking-tight">Positions</h3>
+      {!wallet ? (
+        <p className="py-6 text-center text-[13px] text-muted">Connect a wallet to see positions.</p>
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-center text-[13px] text-muted">No open positions.</p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-[13px]">
+            <thead>
+              <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
+                {["Market", "Size", "Entry", "Mark", "Liq. (both oracles)", "PnL", ""].map((h) => (
+                  <th key={h} className="pb-2 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              <AnimatePresence>
+                {rows.map((r) => (
+                  <PositionRow
+                    key={`${r.s}${r.side}`}
+                    {...r}
+                    m={perps!.markets[r.s]!.data}
+                    busy={busy === `${r.s}${r.side}`}
+                    onClose={async (mark) => {
+                      if (!wallet) return;
+                      setBusy(`${r.s}${r.side}`);
+                      try {
+                        const limit = r.side === "long" ? mark * (1 - SLIPPAGE) : mark * (1 + SLIPPAGE);
+                        const sig = await closePerp(wallet, r.s, r.side, limit);
+                        push({ kind: "ok", title: `Closed ${r.s} ${r.side}`, sig, er: true });
+                        refresh();
+                      } catch (e) {
+                        push({ kind: "err", title: "Close failed", body: (e as Error).message.slice(0, 160) });
+                      } finally {
+                        setBusy(undefined);
+                      }
+                    }}
+                  />
+                ))}
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PositionRow({
+  s,
+  side,
+  slot,
+  m,
+  busy,
+  onClose,
+}: {
+  s: AssetSymbol;
+  side: Side;
+  slot: NonNullable<NonNullable<Perps>["account"]>["data"]["slots"][number];
+  m: NonNullable<NonNullable<Perps>["markets"][AssetSymbol]>["data"];
+  busy: boolean;
+  onClose: (mark: number) => void;
+}) {
+  const t = useLivePrice(s);
+  const size = slot.size.toNumber() / 1e6;
+  const col = slot.collateral.toNumber() / 1e6;
+  const entry = slot.entryPrice.toNumber() / 1e8;
+  const owed = borrowOwed(size, slot.borrowIdx, m.borrowIdx);
+  const liq = liqPrice(side, size, col, entry, m, owed);
+  const mark = t?.price ?? entry;
+  const p = Math.min(pnl(side, size, entry, mark), slot.reserve.toNumber() / 1e6) - owed;
+  return (
+    <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <td className="py-3">
+        <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${side === "long" ? "bg-yes/15 text-yes" : "bg-no/15 text-no"}`}>
+          {side}
+        </span>
+        {s} <span className="num text-muted">{(size / col).toFixed(1)}×</span>
+      </td>
+      <td className="num">${fmtNum(size)}</td>
+      <td className="num">{fmtUsd(entry)}</td>
+      <td className="num">{fmtUsd(mark)}</td>
+      <td className="num text-flame-2">{fmtUsd(liq)}</td>
+      <td className={`num ${p >= 0 ? "text-yes" : "text-no"}`}>
+        {p >= 0 ? "+" : ""}${fmtNum(p)} <span className="text-[11px]">({((p / col) * 100).toFixed(1)}%)</span>
+      </td>
+      <td className="text-right">
+        <button
+          disabled={busy}
+          onClick={() => onClose(mark)}
+          className="rounded-full border hairline px-3 py-1 text-[12px] hover:border-line-2 disabled:opacity-40"
+        >
+          {busy ? "…" : "Close"}
+        </button>
+      </td>
+    </motion.tr>
+  );
+}
+
+function AccountPanel({ perps, refresh }: { perps: Perps; refresh: () => void }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const usdc = useUsdc();
+  const [amt, setAmt] = useState("100");
+  const [busy, setBusy] = useState<string>();
+  const acc = perps?.account?.data;
+  const credit = acc ? acc.credit.toNumber() / 1e6 : 0;
+  if (!wallet) return null;
+  const run = async (label: string, fn: () => Promise<string>) => {
+    setBusy(label);
+    try {
+      const sig = await fn();
+      push({ kind: "ok", title: label, sig });
+      refresh();
+      usdc.refresh();
+    } catch (e) {
+      push({ kind: "err", title: `${label} failed`, body: (e as Error).message.slice(0, 160) });
+    } finally {
+      setBusy(undefined);
+    }
+  };
+  return (
+    <div className="panel space-y-3 p-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[13px] font-semibold">Trading account</span>
+        <span className="num text-[13px]">${fmtNum(credit)} free</span>
+      </div>
+      <AmountInput label="Amount" value={amt} onChange={setAmt} max={usdc.data} />
+      <div className="grid grid-cols-2 gap-2">
+        <Button busy={busy === "Deposit"} disabled={!Number(amt)} onClick={() => run("Deposit", () => depositPerp(wallet, Number(amt)))}>
+          Deposit
+        </Button>
+        <button
+          disabled={!!busy || !Number(amt) || Number(amt) > credit}
+          onClick={() => run("Withdraw", () => withdrawPerp(wallet, Number(amt)))}
+          className="h-12 rounded-xl border hairline text-[14px] font-semibold hover:border-line-2 disabled:opacity-40"
+        >
+          {busy === "Withdraw" ? "…" : "Withdraw"}
+        </button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-faint">
+        Deposits land once on Solana; after that every trade runs on the rollup. Provide liquidity on the{" "}
+        <Link href="/pool" className="text-flame-2 hover:underline">
+          LP pool
+        </Link>
+        .
+      </p>
+    </div>
+  );
+}
+
+function MarketStats({ m, pool, price }: { m?: NonNullable<NonNullable<Perps>["markets"][AssetSymbol]>["data"]; pool?: NonNullable<NonNullable<Perps>["pool"]>["data"]; price?: number }) {
+  const stats: [string, string][] = [
+    ["Oracle price", price ? fmtUsd(price) : "—"],
+    ["Long OI", m ? `$${fmtNum(m.longOi.toNumber() / 1e6, 0)}` : "—"],
+    ["Short OI", m ? `$${fmtNum(m.shortOi.toNumber() / 1e6, 0)}` : "—"],
+    ["Max leverage", m ? `${m.maxLeverage}×` : "—"],
+    ["Maintenance", m ? `${(m.maintBps / 100).toFixed(2)}%` : "—"],
+    ["Pool liquidity", pool ? `$${fmtNum(pool.liquidity.toNumber() / 1e6, 0)}` : "—"],
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border hairline bg-line sm:grid-cols-3 lg:grid-cols-6">
+      {stats.map(([k, v]) => (
+        <div key={k} className="bg-ink p-4">
+          <div className="text-[10px] tracking-wide text-muted uppercase">{k}</div>
+          <div className="num mt-1 text-[15px]">{v}</div>
+        </div>
+      ))}
+    </div>
+  );
+}

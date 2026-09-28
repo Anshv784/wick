@@ -85,8 +85,16 @@ export type TicketAccount = Awaited<
 
 export const HOUSE = deployment.house ? new PublicKey(deployment.house) : null;
 
-/** Markets listed in deployment.json plus the house's sequential markets (ids 1, 2, 3, …). */
+let discovered: { at: number; keys: PublicKey[] } | null = null;
+
+/** Markets listed in deployment.json plus the house's sequential markets (ids 1, 2, 3, …). Cached for a minute. */
 export async function discoverMarketKeys(): Promise<PublicKey[]> {
+  if (discovered && Date.now() - discovered.at < 60_000) return discovered.keys;
+  discovered = { at: Date.now(), keys: await scanMarketKeys() };
+  return discovered.keys;
+}
+
+async function scanMarketKeys(): Promise<PublicKey[]> {
   const keys = new Map<string, PublicKey>((deployment.markets as string[]).map((k) => [k, new PublicKey(k)]));
   if (HOUSE) {
     for (let start = 1; ; start += 50) {
@@ -111,6 +119,26 @@ export async function fetchLocated<T>(
   const onEr = info.owner.equals(DELEGATION_PROGRAM);
   const data = await decode(onEr ? erConn : baseConn);
   return data ? { data, onEr } : null;
+}
+
+/** Batch read: one base call for every market, one ER call for the delegated ones. */
+export async function fetchMarkets(keys: PublicKey[]) {
+  if (!keys.length) return [];
+  const coder = marketsProgram(baseConn).coder.accounts;
+  const base = await baseConn.getMultipleAccountsInfo(keys);
+  const erKeys = keys.filter((_, i) => base[i]?.owner.equals(DELEGATION_PROGRAM));
+  const er = erKeys.length ? await erConn.getMultipleAccountsInfo(erKeys) : [];
+  return keys.map((key, i) => {
+    const info = base[i];
+    if (!info) return { key, m: null };
+    const onEr = info.owner.equals(DELEGATION_PROGRAM);
+    const src = onEr ? er[erKeys.findIndex((k) => k.equals(key))] : info;
+    try {
+      return src ? { key, m: { data: coder.decode("market", src.data) as MarketAccount, onEr } } : { key, m: null };
+    } catch {
+      return { key, m: null };
+    }
+  });
 }
 
 export const fetchMarket = (key: PublicKey) =>

@@ -204,12 +204,15 @@ export function CandleScene() {
     let visible = true;
     const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting));
     io.observe(el);
-    const clock = new THREE.Clock();
+    let last = performance.now();
+    let t = 0;
     const tick = () => {
       raf = requestAnimationFrame(tick);
       if (!visible) return;
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.elapsedTime;
+      const nowMs = performance.now();
+      const dt = Math.min((nowMs - last) / 1000, 0.05);
+      last = nowMs;
+      t += dt;
       camera.position.x += (target.x * 1.6 + Math.sin(t * 0.08) * 1.2 - camera.position.x) * 0.03;
       camera.position.y += (1.2 - target.y * 0.8 - camera.position.y) * 0.03;
       camera.lookAt(0, 0, -4);
@@ -244,5 +247,6 @@ export function CandleScene() {
     };
   }, []);
 
-  return <div ref={mount} className="absolute inset-0" aria-hidden />;
+  // On phones the scene sits under the copy instead of behind it.
+  return <div ref={mount} className="absolute inset-x-0 top-[48%] bottom-0 sm:inset-0" aria-hidden />;
 }

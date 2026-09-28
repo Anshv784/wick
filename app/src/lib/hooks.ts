@@ -7,6 +7,7 @@ import {
   ata,
   baseConn,
   discoverMarketKeys,
+  fetchMarkets,
   erConn,
   BookAccount,
   fetchMarket,
@@ -87,8 +88,7 @@ export function useMarket(key: PublicKey | undefined) {
 export function useMarkets() {
   return usePoll(
     async () => {
-      const keys = await discoverMarketKeys();
-      const rows = await Promise.all(keys.map(async (k) => ({ key: k, m: await fetchMarket(k).catch(() => null) })));
+      const rows = await fetchMarkets(await discoverMarketKeys());
       const now = Date.now() / 1000;
       const live = (m: MarketAccount) => "open" in (m.status as object) && m.expiry.toNumber() > now;
       return (rows.filter((r) => r.m) as { key: PublicKey; m: Located<MarketAccount> }[]).sort(
@@ -96,7 +96,7 @@ export function useMarkets() {
           Number(live(b.m.data)) - Number(live(a.m.data)) || a.m.data.expiry.toNumber() - b.m.data.expiry.toNumber(),
       );
     },
-    5000,
+    8000,
     [],
   );
 }

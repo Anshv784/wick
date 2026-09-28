@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter_Tight, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Inter_Tight, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import { Providers } from "@/components/Providers";
@@ -12,6 +12,7 @@ const serif = Instrument_Serif({
   style: ["normal", "italic"],
 });
 const mono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["latin"] });
+const display = Bricolage_Grotesque({ variable: "--font-bricolage", subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
 
 export const metadata: Metadata = {
   title: "Wick — trade the path, not just the close",
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${serif.variable} ${mono.variable} antialiased`}>
+    <html lang="en" className={`${inter.variable} ${serif.variable} ${mono.variable} ${display.variable} antialiased`}>
       <body className="grain min-h-screen font-sans">
         <Providers>{children}</Providers>
       </body>

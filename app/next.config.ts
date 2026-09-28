@@ -4,6 +4,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   // Old routes from before perps became the lead product.
   async redirects() {
     return [

@@ -8,7 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import { FaucetButton } from "./FaucetButton";
-import { Logo } from "./Logo";
+import { Wordmark } from "./Logo";
 import { SessionButton } from "./SessionButton";
 
 const WalletMultiButton = dynamic(
@@ -66,9 +66,8 @@ export function Nav() {
   return (
     <header className="sticky top-0 z-40 border-b hairline bg-ink/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1280px] items-center gap-6 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2.5">
-          <Logo />
-          <span className="font-display text-[26px] leading-none tracking-tight">Wick</span>
+        <Link href="/">
+          <Wordmark size={24} />
         </Link>
 
         <nav className="hidden items-center rounded-full border hairline bg-ink-2/80 p-1 md:flex">

@@ -33,7 +33,8 @@
   --color-ice: var(--ice);
   --color-violet: var(--violet);
   --font-sans: var(--font-inter-tight);
-  --font-display: var(--font-instrument-serif);
+  --font-display: var(--font-bricolage);
+  --font-serif: var(--font-instrument-serif);
   --font-mono: var(--font-jetbrains-mono);
 }
 
@@ -133,4 +134,13 @@ input[type="range"].wick-range::-webkit-slider-thumb {
 
 ::selection {
   background: rgba(255, 122, 26, 0.35);
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[marquee"] { animation: none !important; }
 }

@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartLine, PriceChart } from "@/components/PriceChart";
+import { PerpDepth } from "@/components/Depth";
 import { useToast } from "@/components/Toast";
 import { AmountInput, Button, Row, Segmented } from "@/components/ui";
 import { buyTicket } from "@/lib/actions";
@@ -81,8 +82,14 @@ export default function PerpsPage() {
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0 space-y-5">
-          <div className="panel overflow-hidden p-2 pt-4">
-            <PriceChart symbol={symbol} lines={lines} height={440} />
+          <div className="panel overflow-hidden">
+            <PriceChart
+              symbol={symbol}
+              lines={lines}
+              height={420}
+              label={`${symbol}-PERP`}
+              depth={<PerpDepth symbol={symbol} mark={tick?.price} />}
+            />
           </div>
           <Positions perps={perps.data} refresh={perps.refresh} />
           <OpenOrders perps={perps.data} refresh={perps.refresh} />

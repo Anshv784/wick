@@ -9,6 +9,7 @@ import { InstantPanel } from "@/components/InstantPanel";
 import { MarketActivity } from "@/components/MarketActivity";
 import { marketQuestion } from "@/components/MarketCard";
 import { ChartLine, PriceChart } from "@/components/PriceChart";
+import { PoolDepth } from "@/components/Depth";
 import { SealedPanel } from "@/components/SealedPanel";
 import { SettlementProof } from "@/components/SettlementProof";
 import { StatusPill } from "@/components/StatusPill";
@@ -90,8 +91,20 @@ export default function MarketPage() {
 
       <div className="mt-8 grid gap-5 lg:grid-cols-[1fr_380px]">
         <div className="space-y-5">
-          <div className="panel overflow-hidden p-2 pt-4">
-            <PriceChart symbol={q.asset.symbol} lines={lines} />
+          <div className="panel overflow-hidden">
+            <PriceChart
+              symbol={q.asset.symbol}
+              lines={lines}
+              label={`${q.asset.symbol}/USD`}
+              depth={
+                <PoolDepth
+                  market={key}
+                  yesReserve={m.data.yesReserve.toNumber()}
+                  noReserve={m.data.noReserve.toNumber()}
+                  feeBps={m.data.feeBps}
+                />
+              }
+            />
           </div>
           <MarketActivity market={key} currentYesBps={yes} />
           <div className="grid gap-5 md:grid-cols-2">

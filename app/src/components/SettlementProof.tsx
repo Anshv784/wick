@@ -75,7 +75,11 @@ export function SettlementProof({ m }: { m: MarketAccount }) {
 function Source({ name, sub, value, strike }: { name: string; sub: string; value: number | null; strike: number }) {
   return (
     <div className="rounded-xl bg-ink p-3.5">
-      <div className="text-[13px] font-semibold">{name}</div>
+      <div className="flex items-center gap-2 text-[13px] font-semibold">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/logos/${name.toLowerCase()}.png`} alt="" className="h-5 w-5 rounded" />
+        {name}
+      </div>
       <div className="text-[10px] text-faint">{sub}</div>
       <div className="num mt-3 text-[18px]">{value ? fmtUsd(value) : "—"}</div>
       {value != null && (

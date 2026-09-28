@@ -507,7 +507,11 @@ function Settlement() {
 function Oracle({ name, sub, v }: { name: string; sub: string; v?: number }) {
   return (
     <div className="rounded-xl bg-ink p-4">
-      <div className="text-[14px] font-semibold">{name}</div>
+      <div className="flex items-center gap-2 text-[14px] font-semibold">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/logos/${name.toLowerCase()}.png`} alt="" className="h-6 w-6 rounded-md" />
+        {name}
+      </div>
       <div className="text-[10px] text-faint">{sub}</div>
       <div className="num mt-4 text-[20px]">{v ? fmtUsd(v) : "—"}</div>
       <div className="text-[11px] text-muted">SOL/USD</div>
@@ -515,15 +519,24 @@ function Oracle({ name, sub, v }: { name: string; sub: string; v?: number }) {
   );
 }
 
+const STACK = [
+  { name: "Solana", src: "/logos/solana-icon.svg", raw: true },
+  { name: "MagicBlock", src: "/logos/magicblock.png" },
+  { name: "Arcium", src: "/logos/arcium.png" },
+  { name: "Pyth", src: "/logos/pyth.png" },
+  { name: "Switchboard", src: "/logos/switchboard.png" },
+];
+
 function Stack() {
-  const items = ["Solana", "MagicBlock", "Arcium", "Pyth", "Switchboard"];
   return (
     <section className="border-y hairline">
-      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-14 gap-y-4 px-4 py-10 sm:px-6">
+      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-12 gap-y-5 px-4 py-10 sm:px-6">
         <span className="text-[11px] tracking-[0.2em] text-faint uppercase">Built on</span>
-        {items.map((x) => (
-          <span key={x} className="font-display text-[26px] text-muted">
-            {x}
+        {STACK.map((x) => (
+          <span key={x.name} className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={x.src} alt="" className={x.raw ? "h-6 w-7 object-contain" : "h-8 w-8 rounded-lg"} />
+            <span className="font-display text-[26px] text-muted">{x.name}</span>
           </span>
         ))}
       </div>

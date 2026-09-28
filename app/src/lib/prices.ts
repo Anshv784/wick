@@ -71,8 +71,8 @@ export function useLivePrice(symbol: AssetSymbol | undefined) {
   return tick;
 }
 
-export async function fetchCandles(symbol: AssetSymbol): Promise<Candle[]> {
-  const r = await fetch(`/api/candles?symbol=${symbol}`);
+export async function fetchCandles(symbol: AssetSymbol, granularity = 60): Promise<Candle[]> {
+  const r = await fetch(`/api/candles?symbol=${symbol}&granularity=${granularity}`);
   return r.ok ? r.json() : [];
 }
 

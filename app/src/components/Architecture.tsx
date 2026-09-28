@@ -5,6 +5,18 @@ import { ReactNode, useState } from "react";
 
 /* ------------------------------------------------------------------ glyphs */
 
+/** An official logo, clipped to a rounded tile inside the 80×80 glyph box. */
+function Logo({ href, x = 12, y = 12, size = 56, round = 14, id }: { href: string; x?: number; y?: number; size?: number; round?: number; id: string }) {
+  return (
+    <g>
+      <clipPath id={`clip-${id}`}>
+        <rect x={x} y={y} width={size} height={size} rx={round} />
+      </clipPath>
+      <image href={href} x={x} y={y} width={size} height={size} clipPath={`url(#clip-${id})`} preserveAspectRatio="xMidYMid slice" />
+    </g>
+  );
+}
+
 const Glyph = {
   trader: (
     <g>
@@ -20,41 +32,15 @@ const Glyph = {
       })}
     </g>
   ),
-  rollup: (
-    <g fill="none" stroke="#9b87ff" strokeWidth="1.6">
-      {[0, 9, 18].map((dy) => (
-        <path key={dy} d={`M40 ${14 + dy} L70 ${27 + dy} L40 ${40 + dy} L10 ${27 + dy} Z`} fill={dy === 0 ? "rgba(155,135,255,0.12)" : "none"} />
-      ))}
-    </g>
-  ),
-  solana: (
-    <g>
-      <defs>
-        <linearGradient id="solg" x1="0" x2="1">
-          <stop offset="0" stopColor="#5ee0a1" />
-          <stop offset="1" stopColor="#b79cff" />
-        </linearGradient>
-      </defs>
-      {[16, 34, 52].map((y, i) => (
-        <path key={y} d={i === 1 ? `M14 ${y} H58 L66 ${y + 9} H22 Z` : `M22 ${y} H66 L58 ${y + 9} H14 Z`} fill="url(#solg)" />
-      ))}
-    </g>
-  ),
+  rollup: <Logo href="/logos/magicblock.png" id="mb" x={4} y={4} size={72} round={36} />,
+  solana: <image href="/logos/solana-icon.svg" x="18" y="22" width="44" height="37" />,
   oracle: (
-    <g fill="none" stroke="#f3efe6" strokeWidth="1.6">
-      <circle cx="40" cy="40" r="20" />
-      <circle cx="40" cy="40" r="11" stroke="#ffb266" />
-      <circle cx="40" cy="40" r="3" fill="#ffb266" stroke="none" />
+    <g>
+      <Logo href="/logos/pyth.png" id="pyth" x={-6} y={18} size={44} round={11} />
+      <Logo href="/logos/switchboard.png" id="sb" x={44} y={18} size={44} round={11} />
     </g>
   ),
-  arcium: (
-    <g fill="none" stroke="#b79cff" strokeWidth="1.6">
-      <rect x="22" y="34" width="36" height="28" rx="5" fill="rgba(183,156,255,0.12)" />
-      <path d="M30 34 V26 a10 10 0 0 1 20 0 V34" />
-      <circle cx="40" cy="47" r="3.5" fill="#b79cff" stroke="none" />
-      <line x1="40" x2="40" y1="50" y2="56" />
-    </g>
-  ),
+  arcium: <Logo href="/logos/arcium.png" id="arc" x={10} y={10} size={60} round={14} />,
   keeper: (
     <g fill="none" stroke="#8ab4ff" strokeWidth="1.6">
       <rect x="20" y="26" width="40" height="30" rx="8" />
@@ -86,7 +72,7 @@ type NodeId = "trader" | "rollup" | "oracles" | "solana" | "keeper" | "arcium" |
 const NODES: Record<NodeId, { x: number; y: number; w: number; h: number; title: string; sub: string; glyph: ReactNode; about: string }> = {
   trader: { x: 30, y: 150, w: 190, h: 190, title: "Trader", sub: "app · one-click session", glyph: Glyph.trader, about: "Your wallet signs once to deposit and authorise a 24h session key. After that the browser key signs every rollup trade: no popups, no simulation warnings." },
   rollup: { x: 330, y: 150, w: 210, h: 190, title: "MagicBlock ER", sub: "~1s · gasless", glyph: Glyph.rollup, about: "Perp positions, the LP pool, prediction pools and order books are delegated to an ephemeral rollup. Opens, closes, limit fills and liquidations confirm in about a second." },
-  oracles: { x: 470, y: 410, w: 220, h: 110, title: "Oracles", sub: "Pyth + Switchboard", glyph: Glyph.oracle, about: "Pyth (Wormhole-verified push feed) and Switchboard (Ed25519-verified quote from Coinbase, Kraken, Bitstamp). The rollup reads live clones of both accounts." },
+  oracles: { x: 470, y: 410, w: 240, h: 110, title: "Oracles", sub: "Pyth + Switchboard", glyph: Glyph.oracle, about: "Pyth (Wormhole-verified push feed) and Switchboard (Ed25519-verified quote from Coinbase, Kraken, Bitstamp). The rollup reads live clones of both accounts." },
   solana: { x: 650, y: 150, w: 190, h: 190, title: "Solana", sub: "vaults · settlement", glyph: Glyph.solana, about: "USDC only moves here. Rollup state is committed back to Solana; markets settle, touch tickets pay and sealed batches live on base." },
   keeper: { x: 730, y: 410, w: 200, h: 110, title: "Keeper", sub: "permissionless", glyph: Glyph.keeper, about: "Pushes oracle prices, liquidates, fills limit/TP/SL orders, confirms touches, settles markets and runs Arcium jobs. Anyone could run it; nothing it does needs trust." },
   verdict: { x: 945, y: 40, w: 235, h: 120, title: "Dual-oracle verdict", sub: "agree or freeze", glyph: Glyph.verdict, about: "Liquidations, settlements and touch payouts all require both oracles on the same side and within the max gap. If they disagree, nothing pays the wrong side." },
@@ -287,7 +273,7 @@ export function Architecture() {
                   {n.glyph}
                 </g>
                 <text
-                  x={big ? n.x + n.w / 2 : n.x + 88}
+                  x={big ? n.x + n.w / 2 : n.x + (id === "oracles" ? 112 : 88)}
                   y={big ? n.y + n.h - 42 : n.y + n.h / 2 - 4}
                   textAnchor={big ? "middle" : "start"}
                   fill="#f3efe6"
@@ -298,7 +284,7 @@ export function Architecture() {
                   {n.title}
                 </text>
                 <text
-                  x={big ? n.x + n.w / 2 : n.x + 88}
+                  x={big ? n.x + n.w / 2 : n.x + (id === "oracles" ? 112 : 88)}
                   y={big ? n.y + n.h - 22 : n.y + n.h / 2 + 16}
                   textAnchor={big ? "middle" : "start"}
                   fill="#8d8a83"

@@ -7366,6 +7366,7 @@ dependencies = [
  "arcium-anchor",
  "arcium-client",
  "arcium-macros",
+ "pyth-solana-receiver-sdk",
  "wick_markets",
 ]
 

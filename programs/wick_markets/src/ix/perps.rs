@@ -289,31 +289,27 @@ fn settle_slot(pool: &mut PerpPool, m: &mut PerpMarket, s: &mut Slot, side: Perp
     *s = Slot::default();
 }
 
-pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> Result<()> {
-    let now = Clock::get()?.unix_timestamp;
-    let m = &mut ctx.accounts.market;
-    let pool = &mut ctx.accounts.pool;
-    let acc = &mut ctx.accounts.account;
-    m.accrue(now);
-    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
-    match side {
-        PerpSide::Long => require!(price >= limit_price, WickError::Slippage),
-        PerpSide::Short => require!(price <= limit_price, WickError::Slippage),
-    }
+fn close_at(
+    pool: &mut PerpPool,
+    m: &mut PerpMarket,
+    market_key: Pubkey,
+    acc: &mut PerpAccount,
+    side: PerpSide,
+    price: i64,
+    now: i64,
+) -> Result<()> {
     let idx = slot_index(m, side);
     let mut s = acc.slots[idx];
     require!(s.size > 0, WickError::NothingToClaim);
-    let eq = equity(&s, side, m, price)?;
-    let payout = eq.max(0) as u64;
-    let close_fee = fee(s.size, m.close_fee_bps);
+    let payout = equity(&s, side, m, price)?.max(0) as u64;
     let p = pnl(side, s.size, s.entry_price, price)?.min(s.reserve as i64);
-    pool.fees += close_fee + borrow_fee(&s, m.borrow_idx);
+    pool.fees += fee(s.size, m.close_fee_bps) + borrow_fee(&s, m.borrow_idx);
     settle_slot(pool, m, &mut s, side, payout);
     acc.slots[idx] = s;
     acc.credit += payout;
     emit!(PerpTradeEvent {
         owner: acc.owner,
-        market: m.key(),
+        market: market_key,
         side,
         is_open: false,
         size: 0,
@@ -322,6 +318,71 @@ pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> 
         ts: now,
     });
     Ok(())
+}
+
+pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let market_key = ctx.accounts.market.key();
+    let m = &mut ctx.accounts.market;
+    m.accrue(now);
+    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
+    match side {
+        PerpSide::Long => require!(price >= limit_price, WickError::Slippage),
+        PerpSide::Short => require!(price <= limit_price, WickError::Slippage),
+    }
+    close_at(&mut ctx.accounts.pool, m, market_key, &mut ctx.accounts.account, side, price, now)
+}
+
+/// The Arcium sealed program that owns encrypted stop orders.
+pub const SEALED_PROGRAM_ID: Pubkey = pubkey!("8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT");
+const STOP_DISCRIMINATOR: [u8; 8] = [224, 169, 41, 120, 31, 128, 83, 132];
+
+#[derive(Accounts)]
+pub struct CloseByStop<'info> {
+    pub keeper: Signer<'info>,
+    #[account(mut, seeds = [SEED_PERP_POOL], bump = pool.bump)]
+    pub pool: Account<'info, PerpPool>,
+    #[account(mut, seeds = [SEED_PERP_MARKET, &market.symbol], bump = market.bump)]
+    pub market: Account<'info, PerpMarket>,
+    #[account(mut)]
+    pub account: Account<'info, PerpAccount>,
+    pub price_update: Account<'info, PriceUpdateV2>,
+    /// CHECK: StopOrder owned by the sealed program; parsed and validated in `close_by_stop`.
+    pub stop: UncheckedAccount<'info>,
+}
+
+/// Permissionless. Closes a position whose encrypted stop the Arcium cluster reported as
+/// crossed. Layout of StopOrder (after the 8-byte discriminator): owner 32 · symbol 16 ·
+/// is_long 1 · pubkey 32 · nonce 16 · price_ct 32 · armed 1 · triggered 1 · set_at 8.
+pub fn close_by_stop(ctx: Context<CloseByStop>, side: PerpSide) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let stop = &ctx.accounts.stop;
+    require_keys_eq!(*stop.owner, SEALED_PROGRAM_ID, WickError::Unauthorized);
+    let d = stop.try_borrow_data()?;
+    require!(d.len() >= 147 && d[..8] == STOP_DISCRIMINATOR, WickError::Unauthorized);
+    let owner = Pubkey::try_from(&d[8..40]).map_err(|_| WickError::Unauthorized)?;
+    let symbol: [u8; 16] = d[40..56].try_into().map_err(|_| WickError::Unauthorized)?;
+    let is_long = d[56] == 1;
+    let (armed, triggered) = (d[137] == 1, d[138] == 1);
+    let set_at = i64::from_le_bytes(d[139..147].try_into().map_err(|_| WickError::Unauthorized)?);
+    let (expected, _) =
+        Pubkey::find_program_address(&[b"stop", owner.as_ref(), &symbol, &[is_long as u8]], &SEALED_PROGRAM_ID);
+    require_keys_eq!(expected, stop.key(), WickError::Unauthorized);
+    drop(d);
+
+    let market_key = ctx.accounts.market.key();
+    let m = &mut ctx.accounts.market;
+    let acc = &mut ctx.accounts.account;
+    require_keys_eq!(owner, acc.owner, WickError::Unauthorized);
+    require!(symbol == m.symbol && is_long == (side == PerpSide::Long), WickError::Unauthorized);
+    require!(armed && triggered, WickError::TouchNotConfirmed);
+    // A stop only applies to the position it was set on, not to one opened afterwards.
+    let slot = acc.slots[slot_index(m, side)];
+    require!(slot.size > 0 && slot.opened_at <= set_at, WickError::TicketState);
+
+    m.accrue(now);
+    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
+    close_at(&mut ctx.accounts.pool, m, market_key, acc, side, price, now)
 }
 
 #[derive(Accounts)]

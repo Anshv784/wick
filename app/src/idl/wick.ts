@@ -14,6 +14,34 @@ export type Wick = {
   },
   "instructions": [
     {
+      "name": "cancelStop",
+      "discriminator": [
+        203,
+        129,
+        154,
+        146,
+        159,
+        16,
+        58,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "stop"
+          ]
+        },
+        {
+          "name": "stop",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "cancelStuckOrder",
       "docs": [
         "If an order's computation never called back, its owner can take the deposit back",
@@ -90,6 +118,177 @@ export type Wick = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "checkStop",
+      "docs": [
+        "Permissionless. Asks the cluster whether the oracle mark has crossed the hidden stop.",
+        "The mark comes from the perp market's pinned Pyth feed, so the caller can't choose it."
+      ],
+      "discriminator": [
+        147,
+        8,
+        223,
+        57,
+        189,
+        78,
+        177,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "stop",
+          "writable": true
+        },
+        {
+          "name": "perpMarket"
+        },
+        {
+          "name": "priceUpdate"
+        },
+        {
+          "name": "signPdaAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  65,
+                  114,
+                  99,
+                  105,
+                  117,
+                  109,
+                  83,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114,
+                  65,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "mempoolAccount",
+          "writable": true
+        },
+        {
+          "name": "executingPool",
+          "writable": true
+        },
+        {
+          "name": "computationAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "clusterAccount",
+          "writable": true
+        },
+        {
+          "name": "poolAccount",
+          "writable": true,
+          "address": "G2sRWJvi3xoyh5k2gY49eG9L8YhAEWQPtNb1zb1GXTtC"
+        },
+        {
+          "name": "clockAccount",
+          "writable": true,
+          "address": "7EbMUTLo5DjdzbN7s8BXeZwXzEwNQb1hScfRvWg8a6ot"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        }
+      ],
+      "args": [
+        {
+          "name": "computationOffset",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "checkStopCallback",
+      "discriminator": [
+        88,
+        107,
+        158,
+        19,
+        234,
+        43,
+        13,
+        68
+      ],
+      "accounts": [
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "compDefAccount"
+        },
+        {
+          "name": "mxeAccount"
+        },
+        {
+          "name": "computationAccount"
+        },
+        {
+          "name": "clusterAccount"
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "stop",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "output",
+          "type": {
+            "defined": {
+              "name": "signedComputationOutputs",
+              "generics": [
+                {
+                  "kind": "type",
+                  "type": {
+                    "defined": {
+                      "name": "checkStopOutput"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "name": "createBatch",
@@ -255,6 +454,51 @@ export type Wick = {
           "type": "i64"
         }
       ]
+    },
+    {
+      "name": "initCheckStopCompDef",
+      "discriminator": [
+        45,
+        51,
+        109,
+        45,
+        82,
+        230,
+        143,
+        163
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mxeAccount",
+          "writable": true
+        },
+        {
+          "name": "compDefAccount",
+          "writable": true
+        },
+        {
+          "name": "addressLookupTable",
+          "writable": true
+        },
+        {
+          "name": "lutProgram",
+          "address": "AddressLookupTab1e1111111111111111111111111"
+        },
+        {
+          "name": "arciumProgram",
+          "address": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initInitTotalsCompDef",
@@ -1103,6 +1347,75 @@ export type Wick = {
       ]
     },
     {
+      "name": "setStop",
+      "docs": [
+        "Arms (or re-arms) an encrypted stop for one perp position. Only the ciphertext and the",
+        "trader's x25519 key are stored; the stop price is never revealed."
+      ],
+      "discriminator": [
+        231,
+        201,
+        169,
+        101,
+        182,
+        97,
+        251,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "stop",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "symbol",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        },
+        {
+          "name": "isLong",
+          "type": "bool"
+        },
+        {
+          "name": "pubkey",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "nonce",
+          "type": "u128"
+        },
+        {
+          "name": "priceCt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "settleOrder",
       "docs": [
         "Once the Wick market is settled or voided, opens this order in MPC so it can be paid.",
@@ -1329,6 +1642,19 @@ export type Wick = {
         126,
         225
       ]
+    },
+    {
+      "name": "stopOrder",
+      "discriminator": [
+        224,
+        169,
+        41,
+        120,
+        31,
+        128,
+        83,
+        132
+      ]
     }
   ],
   "events": [
@@ -1356,6 +1682,19 @@ export type Wick = {
         68,
         232,
         20
+      ]
+    },
+    {
+      "name": "stopTriggered",
+      "discriminator": [
+        60,
+        210,
+        41,
+        185,
+        225,
+        181,
+        204,
+        130
       ]
     }
   ],
@@ -1399,6 +1738,11 @@ export type Wick = {
       "code": 6007,
       "name": "unauthorized",
       "msg": "Only the market creator can open its sealed batch"
+    },
+    {
+      "code": 6008,
+      "name": "stalePrice",
+      "msg": "Oracle price is stale"
     }
   ],
   "types": [
@@ -1491,6 +1835,22 @@ export type Wick = {
           },
           {
             "name": "cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "checkStopOutput",
+      "docs": [
+        "The output of the callback instruction. Provided as a struct with ordered fields",
+        "as anchor does not support tuples and tuple structs yet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "field0",
+            "type": "bool"
           }
         ]
       }
@@ -2383,6 +2743,114 @@ export type Wick = {
       }
     },
     {
+      "name": "priceFeedMessage",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feedId",
+            "docs": [
+              "`FeedId` but avoid the type alias because of compatibility issues with Anchor's `idl-build` feature."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "price",
+            "type": "i64"
+          },
+          {
+            "name": "conf",
+            "type": "u64"
+          },
+          {
+            "name": "exponent",
+            "type": "i32"
+          },
+          {
+            "name": "publishTime",
+            "docs": [
+              "The timestamp of this price update in seconds"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "prevPublishTime",
+            "docs": [
+              "The timestamp of the previous price update. This field is intended to allow users to",
+              "identify the single unique price update for any moment in time:",
+              "for any time t, the unique update is the one such that prev_publish_time < t <= publish_time.",
+              "",
+              "Note that there may not be such an update while we are migrating to the new message-sending logic,",
+              "as some price updates on pythnet may not be sent to other chains (because the message-sending",
+              "logic may not have triggered). We can solve this problem by making the message-sending mandatory",
+              "(which we can do once publishers have migrated over).",
+              "",
+              "Additionally, this field may be equal to publish_time if the message is sent on a slot where",
+              "where the aggregation was unsuccesful. This problem will go away once all publishers have",
+              "migrated over to a recent version of pyth-agent."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "emaPrice",
+            "type": "i64"
+          },
+          {
+            "name": "emaConf",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "priceUpdateV2",
+      "docs": [
+        "A price update account. This account is used by the Pyth Receiver program to store a verified price update from a Pyth price feed.",
+        "It contains:",
+        "- `write_authority`: The write authority for this account. This authority can close this account to reclaim rent or update the account to contain a different price update.",
+        "- `verification_level`: The [`VerificationLevel`] of this price update. This represents how many Wormhole guardian signatures have been verified for this price update.",
+        "- `price_message`: The actual price update.",
+        "- `posted_slot`: The slot at which this price update was posted."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "writeAuthority",
+            "type": "pubkey"
+          },
+          {
+            "name": "verificationLevel",
+            "type": {
+              "defined": {
+                "name": "verificationLevel"
+              }
+            }
+          },
+          {
+            "name": "priceMessage",
+            "type": {
+              "defined": {
+                "name": "priceFeedMessage"
+              }
+            }
+          },
+          {
+            "name": "postedSlot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "revealOrderOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
@@ -2696,6 +3164,100 @@ export type Wick = {
       }
     },
     {
+      "name": "stopOrder",
+      "docs": [
+        "An encrypted stop-loss for one perp position (owner × market × side). Lives on base; the",
+        "markets program reads `triggered` from its ER clone to allow the close."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "isLong",
+            "type": "bool"
+          },
+          {
+            "name": "pubkey",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u128"
+          },
+          {
+            "name": "priceCt",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "armed",
+            "type": "bool"
+          },
+          {
+            "name": "triggered",
+            "type": "bool"
+          },
+          {
+            "name": "setAt",
+            "docs": [
+              "Only positions opened before this time can be closed by this stop."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "busySince",
+            "type": "i64"
+          },
+          {
+            "name": "checks",
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "stopTriggered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "stop",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "timestamp",
       "type": {
         "kind": "struct",
@@ -2747,6 +3309,39 @@ export type Wick = {
                 64
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "verificationLevel",
+      "docs": [
+        "Pyth price updates are bridged to all blockchains via Wormhole.",
+        "Using the price updates on another chain requires verifying the signatures of the Wormhole guardians.",
+        "The usual process is to check the signatures for two thirds of the total number of guardians, but this can be cumbersome on Solana because of the transaction size limits,",
+        "so we also allow for partial verification.",
+        "",
+        "This enum represents how much a price update has been verified:",
+        "- If `Full`, we have verified the signatures for two thirds of the current guardians.",
+        "- If `Partial`, only `num_signatures` guardian signatures have been checked.",
+        "",
+        "# Warning",
+        "Using partially verified price updates is dangerous, as it lowers the threshold of guardians that need to collude to produce a malicious price update."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "partial",
+            "fields": [
+              {
+                "name": "numSignatures",
+                "type": "u8"
+              }
+            ]
+          },
+          {
+            "name": "full"
           }
         ]
       }

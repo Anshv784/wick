@@ -66,4 +66,18 @@ mod circuits {
         let order = order_ctxt.to_arcis();
         (order.yes.reveal(), order.amount.reveal())
     }
+
+    #[derive(Copy, Clone)]
+    pub struct StopIn {
+        price: u64,
+    }
+
+    /// Hidden stop-loss: compares the oracle mark against the trader's encrypted stop price and
+    /// reveals only whether it was crossed. The stop level itself never leaves MPC.
+    #[instruction]
+    pub fn check_stop(stop_ctxt: Enc<Shared, StopIn>, is_long: bool, mark: u64) -> bool {
+        let stop = stop_ctxt.to_arcis();
+        let hit = if is_long { mark <= stop.price } else { mark >= stop.price };
+        hit.reveal()
+    }
 }

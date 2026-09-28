@@ -210,6 +210,56 @@ async function liquidatePerps() {
   }
 }
 
+const STOP_CHECK_MS = 30_000;
+const stopCheckedAt = new Map<string, number>();
+
+/**
+ * Hidden stop-losses: every armed stop is checked in MPC against the pinned Pyth price every
+ * ~30s. Triggered stops are closed on the ER; the stop price itself is never revealed.
+ */
+async function crankStops() {
+  const stops = await sealed.account.stopOrder.all([{ dataSize: sealed.account.stopOrder.size }]);
+  for (const { publicKey: stop, account: st } of stops) {
+    const symbol = Buffer.from(st.symbol).toString().replace(/\0/g, "");
+    const asset = ASSETS.find((a) => a.symbol === symbol);
+    if (!asset || !st.armed) continue;
+    const perpMarket = PublicKey.findProgramAddressSync(
+      [Buffer.from("perp_market"), Buffer.from(st.symbol)],
+      markets.programId,
+    )[0];
+    if (st.triggered) {
+      const account = PublicKey.findProgramAddressSync([Buffer.from("perp_account"), st.owner.toBuffer()], markets.programId)[0];
+      const ix = await marketsEr.methods
+        .closeByStop(st.isLong ? { long: {} } : { short: {} })
+        .accountsPartial({
+          keeper: admin.publicKey,
+          market: perpMarket,
+          account,
+          priceUpdate: new PublicKey(d.oracles[symbol].pythAccount),
+          stop,
+        })
+        .instruction();
+      await trySend([ix], `stop hit: closed ${symbol} ${st.isLong ? "long" : "short"} of ${st.owner.toBase58().slice(0, 6)}`, erConn);
+      continue;
+    }
+    const last = stopCheckedAt.get(stop.toBase58()) ?? 0;
+    if (Date.now() - last < STOP_CHECK_MS) continue;
+    stopCheckedAt.set(stop.toBase58(), Date.now());
+    const offset = randomOffset();
+    await sealed.methods
+      .checkStop(offset)
+      .accountsPartial({
+        payer: admin.publicKey,
+        stop,
+        perpMarket,
+        priceUpdate: new PublicKey(d.oracles[symbol].pythAccount),
+        ...arciumAccounts(offset, "check_stop"),
+      })
+      .rpc({ commitment: "confirmed" })
+      .catch((e) => log("stop check failed", String(e).slice(0, 120)));
+  }
+}
+
 const REQUEUE_MS = 180_000;
 const queuedAt = new Map<string, number>();
 
@@ -332,6 +382,7 @@ async function main() {
       ["settle", settleMarkets],
       ["sealed", crankSealed],
       ["perps", liquidatePerps],
+      ["stops", crankStops],
     ];
     // Market roll-over and house top-up are slow checks; run them every ~5 minutes.
     if (tick % 40 === 1) jobs.push(["roll", rollMarkets], ["topup", topUpHouse]);

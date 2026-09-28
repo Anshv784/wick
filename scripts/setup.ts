@@ -80,7 +80,7 @@ async function ensureOracles(d: Deployment) {
   }
 }
 
-const CIRCUITS = ["init_totals", "place_order", "reveal_totals", "reveal_order"] as const;
+const CIRCUITS = ["init_totals", "place_order", "reveal_totals", "reveal_order", "check_stop"] as const;
 
 async function ensureCompDefs() {
   const arcium = getArciumProgram(sealed.provider as never);
@@ -98,6 +98,7 @@ async function ensureCompDefs() {
         place_order: "initPlaceOrderCompDef",
         reveal_totals: "initRevealTotalsCompDef",
         reveal_order: "initRevealOrderCompDef",
+        check_stop: "initCheckStopCompDef",
       }[name] as "initInitTotalsCompDef";
       await sealed.methods[method]()
         .accountsPartial({ compDefAccount: compDef, payer: admin.publicKey, mxeAccount, addressLookupTable: lut })

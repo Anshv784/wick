@@ -136,3 +136,39 @@ export async function withdrawSealed(wallet: AnchorWallet, market: PublicKey) {
     .instruction();
   return sendTx(baseConn, wallet, [ix]);
 }
+
+// ---------------------------------------------------------------- hidden stop-losses
+
+const stopSym = (s: string) => Buffer.concat([Buffer.from(s), Buffer.alloc(16)]).subarray(0, 16);
+
+export const stopPda = (owner: PublicKey, symbol: string, isLong: boolean) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("stop"), owner.toBuffer(), stopSym(symbol), Buffer.from([isLong ? 1 : 0])],
+    SEALED_ID,
+  )[0];
+
+/** Encrypts the stop price to the Arcium MXE and arms it. Only ciphertext goes on-chain. */
+export async function setHiddenStop(wallet: AnchorWallet, symbol: string, isLong: boolean, stopPrice: number) {
+  const priv = x25519.utils.randomSecretKey();
+  const pub = x25519.getPublicKey(priv);
+  const cipher = new RescueCipher(x25519.getSharedSecret(priv, await mxePublicKey(wallet)));
+  const nonce = randomBytes(16);
+  const [ct] = cipher.encrypt([BigInt(Math.round(stopPrice * 1e8))], nonce);
+  const ix = await sealedProgram(baseConn, wallet)
+    .methods.setStop(Array.from(stopSym(symbol)), isLong, Array.from(pub), new BN(Buffer.from(nonce).reverse()), Array.from(ct))
+    .accountsPartial({ owner: wallet.publicKey, stop: stopPda(wallet.publicKey, symbol, isLong) })
+    .instruction();
+  return sendTx(baseConn, wallet, [ix]);
+}
+
+export async function cancelHiddenStop(wallet: AnchorWallet, symbol: string, isLong: boolean) {
+  const ix = await sealedProgram(baseConn, wallet)
+    .methods.cancelStop()
+    .accountsPartial({ owner: wallet.publicKey, stop: stopPda(wallet.publicKey, symbol, isLong) })
+    .instruction();
+  return sendTx(baseConn, wallet, [ix]);
+}
+
+export async function fetchHiddenStop(owner: PublicKey, symbol: string, isLong: boolean) {
+  return sealedProgram(baseConn).account.stopOrder.fetchNullable(stopPda(owner, symbol, isLong)).catch(() => null);
+}

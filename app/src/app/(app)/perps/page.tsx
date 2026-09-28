@@ -29,6 +29,7 @@ import {
 import { touchFairBps, touchQuoteBps } from "@/lib/pricing";
 import { useLivePrice } from "@/lib/prices";
 import { ORACLES } from "@/lib/wick";
+import { cancelHiddenStop, fetchHiddenStop, setHiddenStop } from "@/lib/sealed";
 
 const LEV_MARKS = [2, 5, 10, 20, 35, 50];
 const SLIPPAGE = 0.005;
@@ -288,7 +289,7 @@ function Positions({ perps, refresh }: { perps: Perps; refresh: () => void }) {
           <table className="w-full min-w-[640px] text-[13px]">
             <thead>
               <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
-                {["Market", "Size", "Entry", "Mark", "Liq. (both oracles)", "PnL", ""].map((h) => (
+                {["Market", "Size", "Entry", "Mark", "Liq. (both oracles)", "PnL", "Stop 🔒", ""].map((h) => (
                   <th key={h} className="pb-2 font-medium">
                     {h}
                   </th>
@@ -366,6 +367,9 @@ function PositionRow({
       <td className={`num ${p >= 0 ? "text-yes" : "text-no"}`}>
         {p >= 0 ? "+" : ""}${fmtNum(p)} <span className="text-[11px]">({((p / col) * 100).toFixed(1)}%)</span>
       </td>
+      <td>
+        <HiddenStop s={s} side={side} mark={mark} liq={liq} />
+      </td>
       <td className="text-right">
         <button
           disabled={busy}
@@ -376,6 +380,78 @@ function PositionRow({
         </button>
       </td>
     </motion.tr>
+  );
+}
+
+/** Encrypted stop-loss: the level is encrypted in the browser and checked by Arcium MPC. */
+function HiddenStop({ s, side, mark, liq }: { s: AssetSymbol; side: Side; mark: number; liq: number }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const [open, setOpen] = useState(false);
+  const [px, setPx] = useState("");
+  const [busy, setBusy] = useState(false);
+  const stop = usePoll(
+    async () => (wallet ? fetchHiddenStop(wallet.publicKey, s, side === "long") : null),
+    6000,
+    [wallet?.publicKey.toBase58(), s, side],
+  );
+  const st = stop.data;
+  const value = Number(px);
+  const valid = value > 0 && (side === "long" ? value < mark && value > liq : value > mark && value < liq);
+  if (st?.armed && !open)
+    return (
+      <span className="flex items-center gap-2 text-[12px]">
+        <span className={st.triggered ? "text-flame" : "text-violet"}>{st.triggered ? "hit · closing" : `armed · ${st.checks} checks`}</span>
+        <button
+          className="text-[11px] text-muted hover:text-paper"
+          onClick={async () => {
+            try {
+              await cancelHiddenStop(wallet!, s, side === "long");
+              stop.refresh();
+            } catch (e) {
+              push({ kind: "err", title: "Cancel failed", body: (e as Error).message.slice(0, 120) });
+            }
+          }}
+        >
+          ×
+        </button>
+      </span>
+    );
+  if (!open)
+    return (
+      <button onClick={() => setOpen(true)} className="text-[12px] text-violet hover:underline">
+        set
+      </button>
+    );
+  return (
+    <span className="flex items-center gap-1.5">
+      <input
+        autoFocus
+        value={px}
+        onChange={(e) => setPx(e.target.value.replace(/[^0-9.]/g, ""))}
+        placeholder={side === "long" ? `< ${mark.toFixed(2)}` : `> ${mark.toFixed(2)}`}
+        className="num h-7 w-24 rounded-md border hairline bg-ink px-2 text-[12px] outline-none"
+      />
+      <button
+        disabled={!valid || busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const sig = await setHiddenStop(wallet!, s, side === "long", value);
+            push({ kind: "ok", title: "Hidden stop armed", body: "Encrypted to Arcium; nobody can see your level.", sig });
+            setOpen(false);
+            stop.refresh();
+          } catch (e) {
+            push({ kind: "err", title: "Stop failed", body: (e as Error).message.slice(0, 120) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="rounded-md bg-violet px-2 py-1 text-[11px] font-semibold text-ink disabled:opacity-40"
+      >
+        {busy ? "…" : "🔒"}
+      </button>
+    </span>
   );
 }
 

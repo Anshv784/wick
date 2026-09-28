@@ -387,6 +387,71 @@ export type WickMarkets = {
       "args": []
     },
     {
+      "name": "closeByStop",
+      "discriminator": [
+        87,
+        102,
+        201,
+        149,
+        126,
+        208,
+        187,
+        163
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "priceUpdate"
+        },
+        {
+          "name": "stop"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "perpSide"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "closePerp",
       "discriminator": [
         195,

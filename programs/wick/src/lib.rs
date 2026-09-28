@@ -6,16 +6,21 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use arcium_anchor::prelude::*;
 use arcium_client::idl::arcium::types::CallbackAccount;
-use wick_markets::{Market, MarketStatus, Side};
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+use wick_markets::{Market, MarketStatus, PerpMarket, Side};
 
 const COMP_DEF_OFFSET_INIT_TOTALS: u32 = comp_def_offset("init_totals");
 const COMP_DEF_OFFSET_PLACE_ORDER: u32 = comp_def_offset("place_order");
 const COMP_DEF_OFFSET_REVEAL_TOTALS: u32 = comp_def_offset("reveal_totals");
 const COMP_DEF_OFFSET_REVEAL_ORDER: u32 = comp_def_offset("reveal_order");
+const COMP_DEF_OFFSET_CHECK_STOP: u32 = comp_def_offset("check_stop");
 
 pub const SEED_BATCH: &[u8] = b"batch";
 pub const SEED_BATCH_VAULT: &[u8] = b"batch_vault";
 pub const SEED_ORDER: &[u8] = b"order";
+pub const SEED_STOP: &[u8] = b"stop";
+/// Stop checks use the perp market's pinned Pyth feed, at most this old.
+const STOP_PRICE_MAX_AGE: i64 = 30;
 /// A computation that never called back releases the batch lock after this long.
 const LOCK_TIMEOUT_SECS: i64 = 60;
 const MIN_DEPOSIT: u64 = 1_000_000;
@@ -422,6 +427,108 @@ pub mod wick {
         Ok(())
     }
 
+    // ------------------------------------------------------------ hidden stop-losses
+
+    pub fn init_check_stop_comp_def(ctx: Context<InitCheckStopCompDef>) -> Result<()> {
+        init_computation_def(ctx.accounts, None)?;
+        Ok(())
+    }
+
+    /// Arms (or re-arms) an encrypted stop for one perp position. Only the ciphertext and the
+    /// trader's x25519 key are stored; the stop price is never revealed.
+    pub fn set_stop(
+        ctx: Context<SetStop>,
+        symbol: [u8; 16],
+        is_long: bool,
+        pubkey: [u8; 32],
+        nonce: u128,
+        price_ct: [u8; 32],
+    ) -> Result<()> {
+        let st = &mut ctx.accounts.stop;
+        st.owner = ctx.accounts.owner.key();
+        st.symbol = symbol;
+        st.is_long = is_long;
+        st.pubkey = pubkey;
+        st.nonce = nonce;
+        st.price_ct = price_ct;
+        st.armed = true;
+        st.triggered = false;
+        st.set_at = Clock::get()?.unix_timestamp;
+        st.busy_since = 0;
+        st.bump = ctx.bumps.stop;
+        Ok(())
+    }
+
+    pub fn cancel_stop(_ctx: Context<CancelStop>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Permissionless. Asks the cluster whether the oracle mark has crossed the hidden stop.
+    /// The mark comes from the perp market's pinned Pyth feed, so the caller can't choose it.
+    pub fn check_stop(ctx: Context<CheckStop>, computation_offset: u64) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let market = load_perp_market(&ctx.accounts.perp_market, &ctx.accounts.stop.symbol)?;
+        require_keys_eq!(ctx.accounts.price_update.key(), market.oracle.pyth_account, SealedError::InvalidParams);
+        let p = ctx
+            .accounts
+            .price_update
+            .get_price_unchecked(&market.oracle.pyth_feed_id)
+            .map_err(|_| SealedError::InvalidParams)?;
+        require!(now - p.publish_time <= STOP_PRICE_MAX_AGE && p.price > 0, SealedError::StalePrice);
+        let mark = rescale_1e8(p.price, p.exponent)?;
+
+        let st = &mut ctx.accounts.stop;
+        require!(st.armed && !st.triggered, SealedError::OrderState);
+        require!(st.busy_since == 0 || now > st.busy_since + LOCK_TIMEOUT_SECS, SealedError::BatchBusy);
+        st.busy_since = now;
+        let args = ArgBuilder::new()
+            .x25519_pubkey(st.pubkey)
+            .plaintext_u128(st.nonce)
+            .encrypted_u64(st.price_ct)
+            .plaintext_bool(st.is_long)
+            .plaintext_u64(mark)
+            .build();
+
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
+        let stop_key = ctx.accounts.stop.key();
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            args,
+            vec![CheckStopCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[CallbackAccount { pubkey: stop_key, is_writable: true }],
+            )?],
+            1,
+            0,
+            0,
+        )?;
+        Ok(())
+    }
+
+    #[arcium_callback(encrypted_ix = "check_stop")]
+    pub fn check_stop_callback(
+        ctx: Context<CheckStopCallback>,
+        output: SignedComputationOutputs<CheckStopOutput>,
+    ) -> Result<()> {
+        let hit = match output.verify_output(
+            &ctx.accounts.cluster_account,
+            &ctx.accounts.computation_account,
+        ) {
+            Ok(CheckStopOutput { field_0 }) => field_0,
+            Err(_) => return Err(SealedError::AbortedComputation.into()),
+        };
+        let st = &mut ctx.accounts.stop;
+        st.busy_since = 0;
+        st.checks += 1;
+        if hit && st.armed {
+            st.triggered = true;
+            emit!(StopTriggered { stop: st.key(), owner: st.owner });
+        }
+        Ok(())
+    }
+
     pub fn withdraw_payout(ctx: Context<WithdrawPayout>) -> Result<()> {
         let cancelled = ctx.accounts.batch.state == BatchState::Cancelled;
         let o = &mut ctx.accounts.order;
@@ -451,6 +558,25 @@ fn resolution(info: &AccountInfo) -> Result<(bool, bool)> {
         (MarketStatus::Voided, _) => Ok((false, true)),
         _ => err!(SealedError::MarketNotResolved),
     }
+}
+
+/// Reads a (possibly delegated) Wick perp market and checks it's the canonical PDA for `symbol`.
+fn load_perp_market(info: &AccountInfo, symbol: &[u8; 16]) -> Result<PerpMarket> {
+    let (expected, _) = Pubkey::find_program_address(&[wick_markets::perps::SEED_PERP_MARKET, symbol], &wick_markets::ID);
+    require_keys_eq!(expected, *info.key, SealedError::InvalidParams);
+    let data = info.try_borrow_data()?;
+    PerpMarket::try_deserialize(&mut &data[..])
+}
+
+fn rescale_1e8(price: i64, expo: i32) -> Result<u64> {
+    let shift = expo + 8;
+    let v = if shift >= 0 {
+        (price as i128).checked_mul(10i128.pow(shift as u32))
+    } else {
+        Some(price as i128 / 10i128.pow((-shift) as u32))
+    }
+    .ok_or(SealedError::InvalidParams)?;
+    u64::try_from(v).map_err(|_| SealedError::InvalidParams.into())
 }
 
 fn load_market(info: &AccountInfo) -> Result<Market> {
@@ -534,6 +660,26 @@ pub struct SealedBatch {
     pub vault_bump: u8,
 }
 
+/// An encrypted stop-loss for one perp position (owner × market × side). Lives on base; the
+/// markets program reads `triggered` from its ER clone to allow the close.
+#[account]
+#[derive(InitSpace)]
+pub struct StopOrder {
+    pub owner: Pubkey,
+    pub symbol: [u8; 16],
+    pub is_long: bool,
+    pub pubkey: [u8; 32],
+    pub nonce: u128,
+    pub price_ct: [u8; 32],
+    pub armed: bool,
+    pub triggered: bool,
+    /// Only positions opened before this time can be closed by this stop.
+    pub set_at: i64,
+    pub busy_since: i64,
+    pub checks: u32,
+    pub bump: u8,
+}
+
 /// `order_ct` must stay first: circuits read it at offset 8, length 64.
 #[account]
 #[derive(InitSpace)]
@@ -577,6 +723,30 @@ pub struct WithdrawPayout<'info> {
     #[account(mut, token::mint = batch.mint, token::authority = owner)]
     pub owner_token: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(symbol: [u8; 16], is_long: bool)]
+pub struct SetStop<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + StopOrder::INIT_SPACE,
+        seeds = [SEED_STOP, owner.key().as_ref(), &symbol, &[is_long as u8]],
+        bump,
+    )]
+    pub stop: Account<'info, StopOrder>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CancelStop<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(mut, has_one = owner, close = owner)]
+    pub stop: Account<'info, StopOrder>,
 }
 
 // ---------------------------------------------------------------- queue accounts
@@ -817,6 +987,68 @@ pub struct SettleOrder<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
+#[queue_computation_accounts("check_stop", payer)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct CheckStop<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub stop: Box<Account<'info, StopOrder>>,
+    /// CHECK: Wick perp market (may be delegated); validated in `load_perp_market`.
+    pub perp_market: UncheckedAccount<'info>,
+    pub price_update: Box<Account<'info, PriceUpdateV2>>,
+    #[account(
+        init_if_needed,
+        space = 9,
+        payer = payer,
+        seeds = [&SIGN_PDA_SEED],
+        bump,
+        address = derive_sign_pda!(),
+    )]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    #[account(mut, address = derive_mempool_pda!(mxe_account))]
+    /// CHECK: mempool_account, checked by the arcium program.
+    pub mempool_account: UncheckedAccount<'info>,
+    #[account(mut, address = derive_execpool_pda!(mxe_account))]
+    /// CHECK: executing_pool, checked by the arcium program.
+    pub executing_pool: UncheckedAccount<'info>,
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
+    /// CHECK: computation_account, checked by the arcium program.
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_CHECK_STOP))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[callback_accounts("check_stop")]
+#[derive(Accounts)]
+pub struct CheckStopCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_CHECK_STOP))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK: validated by the Arcium program; verify_output reads slot data from it.
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account))]
+    pub cluster_account: Account<'info, Cluster>,
+    #[account(address = ::arcium_anchor::solana_instructions_sysvar::ID)]
+    /// CHECK: instructions_sysvar, checked by the account constraint
+    pub instructions_sysvar: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub stop: Account<'info, StopOrder>,
+}
+
 // ---------------------------------------------------------------- callback accounts
 
 #[callback_accounts("init_totals")]
@@ -930,6 +1162,7 @@ comp_def_accounts!(InitInitTotalsCompDef, "init_totals");
 comp_def_accounts!(InitPlaceOrderCompDef, "place_order");
 comp_def_accounts!(InitRevealTotalsCompDef, "reveal_totals");
 comp_def_accounts!(InitRevealOrderCompDef, "reveal_order");
+comp_def_accounts!(InitCheckStopCompDef, "check_stop");
 
 // ---------------------------------------------------------------- events / errors
 
@@ -938,6 +1171,12 @@ pub struct SealedOrderPlaced {
     pub batch: Pubkey,
     pub order: Pubkey,
     pub deposit: u64,
+}
+
+#[event]
+pub struct StopTriggered {
+    pub stop: Pubkey,
+    pub owner: Pubkey,
 }
 
 #[event]
@@ -965,4 +1204,6 @@ pub enum SealedError {
     MarketNotResolved,
     #[msg("Only the market creator can open its sealed batch")]
     Unauthorized,
+    #[msg("Oracle price is stale")]
+    StalePrice,
 }

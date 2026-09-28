@@ -140,6 +140,10 @@ pub mod wick_markets {
         ix::perps::close_perp(ctx, side, limit_price)
     }
 
+    pub fn close_by_stop(ctx: Context<CloseByStop>, side: PerpSide) -> Result<()> {
+        ix::perps::close_by_stop(ctx, side)
+    }
+
     pub fn liquidate_perp(ctx: Context<Liquidate>, side: PerpSide) -> Result<()> {
         ix::perps::liquidate_perp(ctx, side)
     }

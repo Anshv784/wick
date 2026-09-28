@@ -210,6 +210,46 @@ async function liquidatePerps() {
   }
 }
 
+/** Fills perp limit / TP / SL orders whose trigger the pinned Pyth price has crossed. */
+async function executePerpOrders() {
+  const books = await marketsEr.account.perpOrders.all([{ dataSize: marketsEr.account.perpOrders.size }]);
+  for (const { publicKey: orders, account: b } of books) {
+    const account = PublicKey.findProgramAddressSync([Buffer.from("perp_account"), b.owner.toBuffer()], markets.programId)[0];
+    for (const [i, o] of b.orders.entries()) {
+      if ("none" in (o.kind as object)) continue;
+      const asset = ASSETS[o.marketIndex];
+      if (!asset) continue;
+      const market = PublicKey.findProgramAddressSync(
+        [Buffer.from("perp_market"), Buffer.concat([Buffer.from(asset.symbol), Buffer.alloc(16)]).subarray(0, 16)],
+        markets.programId,
+      )[0];
+      const ix = await marketsEr.methods
+        .executePerpOrder(i)
+        .accountsPartial({ keeper: admin.publicKey, market, account, orders, priceUpdate: new PublicKey(d.oracles[asset.symbol].pythAccount) })
+        .instruction();
+      await trySend([ix], `filled ${Object.keys(o.kind)[0]} ${asset.symbol} ${o.isLong ? "long" : "short"} for ${b.owner.toBase58().slice(0, 6)}`, erConn);
+    }
+  }
+}
+
+/** Fills prediction limit orders when the pool reaches their price; clears them after expiry. */
+async function executePoolOrders() {
+  const books = await marketsEr.account.poolOrders.all([{ dataSize: marketsEr.account.poolOrders.size }]);
+  for (const { publicKey: orders, account: b } of books) {
+    const position = PublicKey.findProgramAddressSync([Buffer.from("position"), b.market.toBuffer(), b.owner.toBuffer()], markets.programId)[0];
+    const m = await marketsEr.account.market.fetchNullable(b.market).catch(() => null);
+    if (!m) continue;
+    const expired = now() >= m.expiry.toNumber();
+    for (const [i, o] of b.orders.entries()) {
+      if (!o.active) continue;
+      const ix = expired
+        ? await marketsEr.methods.cancelPoolOrder(i).accountsPartial({ signer: admin.publicKey, market: b.market, position, orders, session: null }).instruction()
+        : await marketsEr.methods.executePoolOrder(i).accountsPartial({ keeper: admin.publicKey, market: b.market, position, orders }).instruction();
+      await trySend([ix], `${expired ? "cleared" : "filled"} limit ${o.isBuy ? "buy" : "sell"} ${o.isYes ? "YES" : "NO"} for ${b.owner.toBase58().slice(0, 6)}`, erConn);
+    }
+  }
+}
+
 const STOP_CHECK_MS = 30_000;
 const stopCheckedAt = new Map<string, number>();
 
@@ -378,11 +418,13 @@ async function main() {
     const t0 = Date.now();
     tick++;
     const jobs: [string, () => Promise<unknown>][] = [
+      ["pool orders", executePoolOrders],
       ["touch", confirmTouches],
       ["settle", settleMarkets],
       ["sealed", crankSealed],
       ["perps", liquidatePerps],
       ["stops", crankStops],
+      ["perp orders", executePerpOrders],
     ];
     // Market roll-over and house top-up are slow checks; run them every ~5 minutes.
     if (tick % 40 === 1) jobs.push(["roll", rollMarkets], ["topup", topUpHouse]);

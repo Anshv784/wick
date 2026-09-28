@@ -14,6 +14,80 @@ export type WickMarkets = {
   },
   "instructions": [
     {
+      "name": "adjustMargin",
+      "discriminator": [
+        14,
+        55,
+        115,
+        80,
+        174,
+        90,
+        52,
+        253
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "priceUpdate"
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "perpSide"
+            }
+          }
+        },
+        {
+          "name": "add",
+          "type": "bool"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "buy",
       "discriminator": [
         102,
@@ -27,11 +101,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "position"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "market",
@@ -43,6 +114,10 @@ export type WickMarkets = {
         {
           "name": "position",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -175,6 +250,112 @@ export type WickMarkets = {
               "name": "buyTicketArgs"
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "cancelPerpOrder",
+      "discriminator": [
+        172,
+        79,
+        207,
+        17,
+        243,
+        214,
+        242,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "perpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "cancelPoolOrder",
+      "discriminator": [
+        151,
+        176,
+        91,
+        178,
+        182,
+        171,
+        25,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
         }
       ]
     },
@@ -465,11 +646,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -503,6 +681,10 @@ export type WickMarkets = {
         },
         {
           "name": "priceUpdate"
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -517,6 +699,10 @@ export type WickMarkets = {
         {
           "name": "limitPrice",
           "type": "i64"
+        },
+        {
+          "name": "fractionBps",
+          "type": "u16"
         }
       ]
     },
@@ -1345,6 +1531,198 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "delegatePerpOrders",
+      "discriminator": [
+        152,
+        133,
+        0,
+        252,
+        84,
+        122,
+        53,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "payer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegatePerpPool",
       "discriminator": [
         22,
@@ -1511,6 +1889,205 @@ export type WickMarkets = {
                   111,
                   108
                 ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegatePoolOrders",
+      "discriminator": [
+        201,
+        169,
+        244,
+        154,
+        110,
+        177,
+        204,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "marketKey"
+        },
+        {
+          "name": "bufferOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataOrders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "marketKey"
+              },
+              {
+                "kind": "account",
+                "path": "payer"
               }
             ]
           }
@@ -1789,6 +2366,134 @@ export type WickMarkets = {
         {
           "name": "amount",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "executePerpOrder",
+      "discriminator": [
+        237,
+        180,
+        18,
+        156,
+        56,
+        179,
+        35,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "perpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "priceUpdate"
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "executePoolOrder",
+      "discriminator": [
+        243,
+        13,
+        27,
+        45,
+        183,
+        11,
+        11,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
         }
       ]
     },
@@ -2093,11 +2798,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2124,6 +2826,10 @@ export type WickMarkets = {
         {
           "name": "account",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2147,11 +2853,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2178,6 +2881,10 @@ export type WickMarkets = {
         {
           "name": "account",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2201,11 +2908,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2239,6 +2943,10 @@ export type WickMarkets = {
         },
         {
           "name": "priceUpdate"
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2303,6 +3011,119 @@ export type WickMarkets = {
                   110,
                   116
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "openPerpOrders",
+      "discriminator": [
+        12,
+        207,
+        69,
+        244,
+        231,
+        152,
+        112,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "openPoolOrders",
+      "discriminator": [
+        44,
+        89,
+        183,
+        240,
+        46,
+        180,
+        90,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
               },
               {
                 "kind": "account",
@@ -2544,6 +3365,148 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "placePerpOrder",
+      "discriminator": [
+        69,
+        161,
+        93,
+        202,
+        120,
+        126,
+        76,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "perpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "kind",
+          "type": {
+            "defined": {
+              "name": "perpOrderKind"
+            }
+          }
+        },
+        {
+          "name": "marketIndex",
+          "type": "u8"
+        },
+        {
+          "name": "isLong",
+          "type": "bool"
+        },
+        {
+          "name": "trigger",
+          "type": "i64"
+        },
+        {
+          "name": "collateral",
+          "type": "u64"
+        },
+        {
+          "name": "leverageX10",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "placePoolOrder",
+      "discriminator": [
+        159,
+        84,
+        168,
+        4,
+        161,
+        4,
+        163,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "isYes",
+          "type": "bool"
+        },
+        {
+          "name": "isBuy",
+          "type": "bool"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "limitBps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "processUndelegation",
       "discriminator": [
         196,
@@ -2649,6 +3612,54 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "revokeSession",
+      "discriminator": [
+        86,
+        92,
+        198,
+        120,
+        144,
+        2,
+        7,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sell",
       "discriminator": [
         51,
@@ -2662,11 +3673,8 @@ export type WickMarkets = {
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "position"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "market",
@@ -2678,6 +3686,10 @@ export type WickMarkets = {
         {
           "name": "position",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2696,6 +3708,64 @@ export type WickMarkets = {
         {
           "name": "minOut",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "setSession",
+      "discriminator": [
+        156,
+        135,
+        126,
+        111,
+        184,
+        206,
+        194,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "key",
+          "type": "pubkey"
+        },
+        {
+          "name": "expiresAt",
+          "type": "i64"
         }
       ]
     },
@@ -3043,6 +4113,19 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "perpOrders",
+      "discriminator": [
+        195,
+        160,
+        127,
+        117,
+        141,
+        165,
+        14,
+        106
+      ]
+    },
+    {
       "name": "perpPool",
       "discriminator": [
         85,
@@ -3056,6 +4139,19 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "poolOrders",
+      "discriminator": [
+        242,
+        166,
+        49,
+        159,
+        6,
+        110,
+        229,
+        2
+      ]
+    },
+    {
       "name": "position",
       "discriminator": [
         170,
@@ -3066,6 +4162,19 @@ export type WickMarkets = {
         64,
         247,
         208
+      ]
+    },
+    {
+      "name": "session",
+      "discriminator": [
+        243,
+        81,
+        72,
+        115,
+        214,
+        188,
+        72,
+        144
       ]
     },
     {
@@ -3846,6 +4955,98 @@ export type WickMarkets = {
       }
     },
     {
+      "name": "perpOrder",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "perpOrderKind"
+              }
+            }
+          },
+          {
+            "name": "marketIndex",
+            "type": "u8"
+          },
+          {
+            "name": "isLong",
+            "type": "bool"
+          },
+          {
+            "name": "trigger",
+            "type": "i64"
+          },
+          {
+            "name": "collateral",
+            "docs": [
+              "Escrowed collateral for limit opens."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "leverageX10",
+            "type": "u16"
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpOrderKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "none"
+          },
+          {
+            "name": "limitOpen"
+          },
+          {
+            "name": "takeProfit"
+          },
+          {
+            "name": "stopLoss"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpOrders",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "orders",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "perpOrder"
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "perpPool",
       "type": {
         "kind": "struct",
@@ -3945,6 +5146,73 @@ export type WickMarkets = {
           {
             "name": "ts",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "poolOrder",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "active",
+            "type": "bool"
+          },
+          {
+            "name": "isYes",
+            "type": "bool"
+          },
+          {
+            "name": "isBuy",
+            "type": "bool"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Escrowed USDC (buys) or shares (sells)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "limitBps",
+            "docs": [
+              "Buy: fill when the side trades at or below this; sell: at or above. In bps (¢ × 100)."
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "poolOrders",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "orders",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "poolOrder"
+                  }
+                },
+                4
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -4093,6 +5361,30 @@ export type WickMarkets = {
           {
             "name": "postedSlot",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "session",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "key",
+            "type": "pubkey"
+          },
+          {
+            "name": "expiresAt",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

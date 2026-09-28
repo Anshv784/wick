@@ -1,6 +1,7 @@
 use crate::error::WickError;
 use crate::oracle::{gap_bps, read_pyth_pinned, read_switchboard, Print};
 use crate::perps::*;
+use crate::ix::session::{authorize, Session};
 use crate::state::{OracleSpec, BPS};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -186,16 +187,18 @@ pub fn perp_withdraw(ctx: Context<PerpFunds>, amount: u64) -> Result<()> {
 
 // ---------------------------------------------------------------- trading (ER)
 
+/// Signed by the account owner or their session key.
 #[derive(Accounts)]
 pub struct PerpTrade<'info> {
-    pub owner: Signer<'info>,
+    pub signer: Signer<'info>,
     #[account(mut, seeds = [SEED_PERP_POOL], bump = pool.bump)]
     pub pool: Account<'info, PerpPool>,
     #[account(mut, seeds = [SEED_PERP_MARKET, &market.symbol], bump = market.bump)]
     pub market: Account<'info, PerpMarket>,
-    #[account(mut, has_one = owner)]
+    #[account(mut)]
     pub account: Account<'info, PerpAccount>,
     pub price_update: Account<'info, PriceUpdateV2>,
+    pub session: Option<Account<'info, Session>>,
 }
 
 fn exec_price(update: &Account<PriceUpdateV2>, spec: &OracleSpec) -> Result<Print> {
@@ -205,24 +208,19 @@ fn exec_price(update: &Account<PriceUpdateV2>, spec: &OracleSpec) -> Result<Prin
     Ok(p)
 }
 
-/// Opens or adds to a position. `limit_price` bounds execution (max for longs, min for shorts).
-pub fn open_perp(
-    ctx: Context<PerpTrade>,
+/// Opens or adds `collateral × leverage` at `price`, moving `collateral` out of credit.
+#[allow(clippy::too_many_arguments)]
+fn open_inner(
+    pool: &mut PerpPool,
+    m: &mut PerpMarket,
+    market_key: Pubkey,
+    acc: &mut PerpAccount,
     side: PerpSide,
     collateral: u64,
     leverage_x10: u16,
-    limit_price: i64,
+    price: i64,
+    now: i64,
 ) -> Result<()> {
-    let now = Clock::get()?.unix_timestamp;
-    let m = &mut ctx.accounts.market;
-    let pool = &mut ctx.accounts.pool;
-    let acc = &mut ctx.accounts.account;
-    m.accrue(now);
-    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
-    match side {
-        PerpSide::Long => require!(price <= limit_price, WickError::Slippage),
-        PerpSide::Short => require!(price >= limit_price, WickError::Slippage),
-    }
     require!(
         leverage_x10 >= 11 && leverage_x10 as u64 <= m.max_leverage as u64 * 10,
         WickError::InvalidParams
@@ -255,9 +253,8 @@ pub fn open_perp(
     if s.opened_at == 0 {
         s.opened_at = now;
     }
-    // Whatever collateral a leg had would already need to cover its combined leverage cap.
     require!(
-        s.size as u128 * 10 <= s.collateral as u128 * m.max_leverage as u128 * 10,
+        s.size as u128 <= s.collateral as u128 * m.max_leverage as u128,
         WickError::InvalidParams
     );
 
@@ -267,7 +264,7 @@ pub fn open_perp(
     pool.fees += open_fee + accrued;
     emit!(PerpTradeEvent {
         owner: acc.owner,
-        market: m.key(),
+        market: market_key,
         side,
         is_open: true,
         size,
@@ -278,17 +275,57 @@ pub fn open_perp(
     Ok(())
 }
 
-fn settle_slot(pool: &mut PerpPool, m: &mut PerpMarket, s: &mut Slot, side: PerpSide, payout: u64) {
-    // The pool receives the position's collateral and pays out `payout` (which includes profit).
-    pool.liquidity = (pool.liquidity as i128 + s.collateral as i128 - payout as i128).max(0) as u64;
-    pool.reserved = pool.reserved.saturating_sub(s.reserve);
+/// Opens or adds to a position. `limit_price` bounds execution (max for longs, min for shorts).
+pub fn open_perp(
+    ctx: Context<PerpTrade>,
+    side: PerpSide,
+    collateral: u64,
+    leverage_x10: u16,
+    limit_price: i64,
+) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
+    let now = Clock::get()?.unix_timestamp;
+    let market_key = ctx.accounts.market.key();
+    let m = &mut ctx.accounts.market;
+    m.accrue(now);
+    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
     match side {
-        PerpSide::Long => m.long_oi = m.long_oi.saturating_sub(s.size),
-        PerpSide::Short => m.short_oi = m.short_oi.saturating_sub(s.size),
+        PerpSide::Long => require!(price <= limit_price, WickError::Slippage),
+        PerpSide::Short => require!(price >= limit_price, WickError::Slippage),
     }
-    *s = Slot::default();
+    open_inner(&mut ctx.accounts.pool, m, market_key, &mut ctx.accounts.account, side, collateral, leverage_x10, price, now)
 }
 
+/// Releases `fraction_bps` of a position back to the pool and pays the trader their share.
+fn settle_part(pool: &mut PerpPool, m: &mut PerpMarket, s: &mut Slot, side: PerpSide, fraction_bps: u64, payout: u64) {
+    let part = |v: u64| (v as u128 * fraction_bps as u128 / BPS as u128) as u64;
+    let (size, collateral, reserve) = if fraction_bps >= BPS {
+        (s.size, s.collateral, s.reserve)
+    } else {
+        (part(s.size), part(s.collateral), part(s.reserve))
+    };
+    // The pool receives the closed collateral and pays out `payout` (which includes profit).
+    pool.liquidity = (pool.liquidity as i128 + collateral as i128 - payout as i128).max(0) as u64;
+    pool.reserved = pool.reserved.saturating_sub(reserve);
+    match side {
+        PerpSide::Long => m.long_oi = m.long_oi.saturating_sub(size),
+        PerpSide::Short => m.short_oi = m.short_oi.saturating_sub(size),
+    }
+    if fraction_bps >= BPS {
+        *s = Slot::default();
+    } else {
+        s.size -= size;
+        s.collateral -= collateral;
+        s.reserve -= reserve;
+    }
+}
+
+fn settle_slot(pool: &mut PerpPool, m: &mut PerpMarket, s: &mut Slot, side: PerpSide, payout: u64) {
+    settle_part(pool, m, s, side, BPS, payout)
+}
+
+/// Closes `fraction_bps` (1..=10000) of a position at `price`.
+#[allow(clippy::too_many_arguments)]
 fn close_at(
     pool: &mut PerpPool,
     m: &mut PerpMarket,
@@ -297,14 +334,34 @@ fn close_at(
     side: PerpSide,
     price: i64,
     now: i64,
+    fraction_bps: u64,
 ) -> Result<()> {
+    require!(fraction_bps > 0 && fraction_bps <= BPS, WickError::InvalidParams);
     let idx = slot_index(m, side);
     let mut s = acc.slots[idx];
     require!(s.size > 0, WickError::NothingToClaim);
-    let payout = equity(&s, side, m, price)?.max(0) as u64;
-    let p = pnl(side, s.size, s.entry_price, price)?.min(s.reserve as i64);
-    pool.fees += fee(s.size, m.close_fee_bps) + borrow_fee(&s, m.borrow_idx);
-    settle_slot(pool, m, &mut s, side, payout);
+    // Borrow is settled on the whole leg first, so the remainder starts clean.
+    let accrued = borrow_fee(&s, m.borrow_idx);
+    s.collateral = s.collateral.saturating_sub(accrued);
+    s.borrow_idx = m.borrow_idx;
+    pool.liquidity += accrued;
+    pool.fees += accrued;
+
+    let part = |v: u64| (v as u128 * fraction_bps as u128 / BPS as u128) as u64;
+    let closed = Slot {
+        size: part(s.size),
+        collateral: part(s.collateral),
+        reserve: part(s.reserve),
+        ..s
+    };
+    let payout = equity(&closed, side, m, price)?.max(0) as u64;
+    let p = pnl(side, closed.size, s.entry_price, price)?.min(closed.reserve as i64);
+    pool.fees += fee(closed.size, m.close_fee_bps);
+    settle_part(pool, m, &mut s, side, fraction_bps, payout);
+    // A leftover that's under maintenance would be instantly liquidatable; refuse the partial.
+    if s.size > 0 {
+        require!(!is_liquidatable(&s, side, m, price)?, WickError::InvalidParams);
+    }
     acc.slots[idx] = s;
     acc.credit += payout;
     emit!(PerpTradeEvent {
@@ -312,7 +369,7 @@ fn close_at(
         market: market_key,
         side,
         is_open: false,
-        size: 0,
+        size: closed.size,
         price,
         pnl: p,
         ts: now,
@@ -320,7 +377,8 @@ fn close_at(
     Ok(())
 }
 
-pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> Result<()> {
+pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64, fraction_bps: u16) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
     let now = Clock::get()?.unix_timestamp;
     let market_key = ctx.accounts.market.key();
     let m = &mut ctx.accounts.market;
@@ -330,7 +388,212 @@ pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> 
         PerpSide::Long => require!(price >= limit_price, WickError::Slippage),
         PerpSide::Short => require!(price <= limit_price, WickError::Slippage),
     }
-    close_at(&mut ctx.accounts.pool, m, market_key, &mut ctx.accounts.account, side, price, now)
+    close_at(&mut ctx.accounts.pool, m, market_key, &mut ctx.accounts.account, side, price, now, fraction_bps as u64)
+}
+
+/// Moves collateral between free credit and a position. Removing margin must leave the
+/// position within max leverage and above maintenance at the current price.
+pub fn adjust_margin(ctx: Context<PerpTrade>, side: PerpSide, add: bool, amount: u64) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
+    let now = Clock::get()?.unix_timestamp;
+    let m = &mut ctx.accounts.market;
+    let acc = &mut ctx.accounts.account;
+    m.accrue(now);
+    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
+    let idx = slot_index(m, side);
+    let mut s = acc.slots[idx];
+    require!(s.size > 0 && amount > 0, WickError::InvalidParams);
+    if add {
+        require!(amount <= acc.credit, WickError::InsufficientBalance);
+        acc.credit -= amount;
+        s.collateral += amount;
+    } else {
+        require!(amount < s.collateral, WickError::InsufficientBalance);
+        s.collateral -= amount;
+        require!(
+            s.size as u128 <= s.collateral as u128 * m.max_leverage as u128,
+            WickError::InvalidParams
+        );
+        require!(!is_liquidatable(&s, side, m, price)?, WickError::InvalidParams);
+        acc.credit += amount;
+    }
+    acc.slots[idx] = s;
+    Ok(())
+}
+
+// ---------------------------------------------------------------- limit / TP / SL orders (ER)
+
+pub const SEED_PERP_ORDERS: &[u8] = b"perp_orders";
+pub const PERP_ORDER_SLOTS: usize = 8;
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, Default, InitSpace)]
+pub enum PerpOrderKind {
+    #[default]
+    None,
+    /// Open when the price reaches the trigger (at or below for longs, at or above for shorts).
+    LimitOpen,
+    /// Close the whole leg when price moves in the trader's favour past the trigger.
+    TakeProfit,
+    /// Close the whole leg when price moves against the trader past the trigger.
+    StopLoss,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, InitSpace)]
+pub struct PerpOrder {
+    pub kind: PerpOrderKind,
+    pub market_index: u8,
+    pub is_long: bool,
+    pub trigger: i64,
+    /// Escrowed collateral for limit opens.
+    pub collateral: u64,
+    pub leverage_x10: u16,
+    pub created_at: i64,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct PerpOrders {
+    pub owner: Pubkey,
+    pub orders: [PerpOrder; PERP_ORDER_SLOTS],
+    pub bump: u8,
+}
+
+#[derive(Accounts)]
+pub struct OpenPerpOrders<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + PerpOrders::INIT_SPACE,
+        seeds = [SEED_PERP_ORDERS, owner.key().as_ref()],
+        bump,
+    )]
+    pub orders: Account<'info, PerpOrders>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn open_perp_orders(ctx: Context<OpenPerpOrders>) -> Result<()> {
+    ctx.accounts.orders.set_inner(PerpOrders {
+        owner: ctx.accounts.owner.key(),
+        orders: [PerpOrder::default(); PERP_ORDER_SLOTS],
+        bump: ctx.bumps.orders,
+    });
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct ManagePerpOrder<'info> {
+    pub signer: Signer<'info>,
+    #[account(mut)]
+    pub account: Account<'info, PerpAccount>,
+    #[account(mut, seeds = [SEED_PERP_ORDERS, account.owner.as_ref()], bump = orders.bump)]
+    pub orders: Account<'info, PerpOrders>,
+    pub session: Option<Account<'info, Session>>,
+}
+
+pub fn place_perp_order(
+    ctx: Context<ManagePerpOrder>,
+    kind: PerpOrderKind,
+    market_index: u8,
+    is_long: bool,
+    trigger: i64,
+    collateral: u64,
+    leverage_x10: u16,
+) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
+    require!(kind != PerpOrderKind::None && trigger > 0, WickError::InvalidParams);
+    require!((market_index as usize) * 2 + 1 < SLOTS, WickError::InvalidParams);
+    let acc = &mut ctx.accounts.account;
+    let book = &mut ctx.accounts.orders;
+    let slot = book.orders.iter().position(|o| o.kind == PerpOrderKind::None).ok_or(WickError::HouseCapacity)?;
+    let escrow = if kind == PerpOrderKind::LimitOpen {
+        require!(collateral >= 1_000_000 && collateral <= acc.credit, WickError::InsufficientBalance);
+        require!(leverage_x10 >= 11, WickError::InvalidParams);
+        collateral
+    } else {
+        let leg = acc.slots[market_index as usize * 2 + if is_long { 0 } else { 1 }];
+        require!(leg.size > 0, WickError::NothingToClaim);
+        0
+    };
+    acc.credit -= escrow;
+    book.orders[slot] = PerpOrder {
+        kind,
+        market_index,
+        is_long,
+        trigger,
+        collateral: escrow,
+        leverage_x10,
+        created_at: Clock::get()?.unix_timestamp,
+    };
+    Ok(())
+}
+
+pub fn cancel_perp_order(ctx: Context<ManagePerpOrder>, index: u8) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
+    let o = ctx.accounts.orders.orders.get_mut(index as usize).ok_or(WickError::InvalidParams)?;
+    require!(o.kind != PerpOrderKind::None, WickError::TicketState);
+    ctx.accounts.account.credit += o.collateral;
+    *o = PerpOrder::default();
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct ExecutePerpOrder<'info> {
+    pub keeper: Signer<'info>,
+    #[account(mut, seeds = [SEED_PERP_POOL], bump = pool.bump)]
+    pub pool: Account<'info, PerpPool>,
+    #[account(mut, seeds = [SEED_PERP_MARKET, &market.symbol], bump = market.bump)]
+    pub market: Account<'info, PerpMarket>,
+    #[account(mut)]
+    pub account: Account<'info, PerpAccount>,
+    #[account(mut, seeds = [SEED_PERP_ORDERS, account.owner.as_ref()], bump = orders.bump)]
+    pub orders: Account<'info, PerpOrders>,
+    pub price_update: Account<'info, PriceUpdateV2>,
+}
+
+/// Permissionless: fills an order once the market's pinned Pyth price crosses its trigger.
+pub fn execute_perp_order(ctx: Context<ExecutePerpOrder>, index: u8) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let market_key = ctx.accounts.market.key();
+    let m = &mut ctx.accounts.market;
+    let o = *ctx.accounts.orders.orders.get(index as usize).ok_or(WickError::InvalidParams)?;
+    require!(o.kind != PerpOrderKind::None && o.market_index == m.index, WickError::InvalidParams);
+    m.accrue(now);
+    let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
+    let side = if o.is_long { PerpSide::Long } else { PerpSide::Short };
+    let hit = match (o.kind, o.is_long) {
+        (PerpOrderKind::LimitOpen, true) | (PerpOrderKind::StopLoss, true) | (PerpOrderKind::TakeProfit, false) => price <= o.trigger,
+        (PerpOrderKind::LimitOpen, false) | (PerpOrderKind::StopLoss, false) | (PerpOrderKind::TakeProfit, true) => price >= o.trigger,
+        _ => false,
+    };
+    require!(hit, WickError::TouchNotConfirmed);
+    ctx.accounts.orders.orders[index as usize] = PerpOrder::default();
+    let acc = &mut ctx.accounts.account;
+    match o.kind {
+        PerpOrderKind::LimitOpen => {
+            acc.credit += o.collateral;
+            open_inner(&mut ctx.accounts.pool, m, market_key, acc, side, o.collateral, o.leverage_x10, price, now)
+        }
+        _ if acc.slots[slot_index(m, side)].size == 0 => Ok(()),
+        _ => close_at(&mut ctx.accounts.pool, m, market_key, acc, side, price, now, BPS),
+    }
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegatePerpOrders<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: the payer's perp order book PDA; delegation changes its owner.
+    #[account(mut, del, seeds = [SEED_PERP_ORDERS, payer.key().as_ref()], bump)]
+    pub orders: UncheckedAccount<'info>,
+}
+
+pub fn delegate_perp_orders(ctx: Context<DelegatePerpOrders>) -> Result<()> {
+    let payer = ctx.accounts.payer.key();
+    ctx.accounts.delegate_orders(&ctx.accounts.payer, &[SEED_PERP_ORDERS, payer.as_ref()], DelegateConfig::default())?;
+    Ok(())
 }
 
 /// The Arcium sealed program that owns encrypted stop orders.
@@ -382,7 +645,7 @@ pub fn close_by_stop(ctx: Context<CloseByStop>, side: PerpSide) -> Result<()> {
 
     m.accrue(now);
     let price = exec_price(&ctx.accounts.price_update, &m.oracle)?.price;
-    close_at(&mut ctx.accounts.pool, m, market_key, acc, side, price, now)
+    close_at(&mut ctx.accounts.pool, m, market_key, acc, side, price, now, BPS)
 }
 
 #[derive(Accounts)]
@@ -448,14 +711,16 @@ pub fn liquidate_perp(ctx: Context<Liquidate>, side: PerpSide) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct PerpLp<'info> {
-    pub owner: Signer<'info>,
+    pub signer: Signer<'info>,
     #[account(mut, seeds = [SEED_PERP_POOL], bump = pool.bump)]
     pub pool: Account<'info, PerpPool>,
-    #[account(mut, has_one = owner)]
+    #[account(mut)]
     pub account: Account<'info, PerpAccount>,
+    pub session: Option<Account<'info, Session>>,
 }
 
 pub fn lp_deposit(ctx: Context<PerpLp>, amount: u64) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
     let pool = &mut ctx.accounts.pool;
     let acc = &mut ctx.accounts.account;
     require!(amount > 0 && amount <= acc.credit, WickError::InsufficientBalance);
@@ -474,6 +739,7 @@ pub fn lp_deposit(ctx: Context<PerpLp>, amount: u64) -> Result<()> {
 
 /// Burns shares for USDC credit; only unreserved liquidity can leave.
 pub fn lp_withdraw(ctx: Context<PerpLp>, shares: u64) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.account.owner, &ctx.accounts.session)?;
     let pool = &mut ctx.accounts.pool;
     let acc = &mut ctx.accounts.account;
     require!(shares > 0 && shares <= acc.lp_shares, WickError::InsufficientBalance);

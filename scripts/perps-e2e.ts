@@ -42,7 +42,7 @@ const USDC = 1_000_000;
 
   const market = perpPda.market("SOL");
   const priceUpdate = new PublicKey(d.oracles.SOL.pythAccount);
-  const accounts = { owner: user.publicKey, pool: perpPda.pool(), market, account, priceUpdate };
+  const accounts = { signer: user.publicKey, pool: perpPda.pool(), market, account, priceUpdate };
 
   let t0 = Date.now();
   await er.methods
@@ -59,7 +59,7 @@ const USDC = 1_000_000;
 
   await sleep(6000);
   t0 = Date.now();
-  await er.methods.closePerp({ long: {} }, new BN(0)).accountsPartial(accounts).rpc({ commitment: "confirmed" });
+  await er.methods.closePerp({ long: {} }, new BN(0), 10_000).accountsPartial(accounts).rpc({ commitment: "confirmed" });
   const after = await er.account.perpAccount.fetch(account);
   log(`closed in ${Date.now() - t0}ms: credit $${(after.credit.toNumber() / USDC).toFixed(4)} (started with $200)`);
   const pool = await er.account.perpPool.fetch(perpPda.pool());

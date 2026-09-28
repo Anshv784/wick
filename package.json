@@ -9,7 +9,8 @@
     "postinstall": "node -e \"require('fs').rmSync('node_modules/jito-ts/node_modules/@solana/web3.js',{recursive:true,force:true})\"",
     "perps-setup": "tsx scripts/perps-setup.ts",
     "perps-e2e": "tsx scripts/perps-e2e.ts",
-    "stop-e2e": "tsx scripts/stop-e2e.ts"
+    "stop-e2e": "tsx scripts/stop-e2e.ts",
+    "features-e2e": "tsx scripts/features-e2e.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.0.2",

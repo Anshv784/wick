@@ -136,8 +136,73 @@ pub mod wick_markets {
         ix::perps::open_perp(ctx, side, collateral, leverage_x10, limit_price)
     }
 
-    pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64) -> Result<()> {
-        ix::perps::close_perp(ctx, side, limit_price)
+    pub fn close_perp(ctx: Context<PerpTrade>, side: PerpSide, limit_price: i64, fraction_bps: u16) -> Result<()> {
+        ix::perps::close_perp(ctx, side, limit_price, fraction_bps)
+    }
+
+    pub fn adjust_margin(ctx: Context<PerpTrade>, side: PerpSide, add: bool, amount: u64) -> Result<()> {
+        ix::perps::adjust_margin(ctx, side, add, amount)
+    }
+
+    pub fn open_perp_orders(ctx: Context<OpenPerpOrders>) -> Result<()> {
+        ix::perps::open_perp_orders(ctx)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn place_perp_order(
+        ctx: Context<ManagePerpOrder>,
+        kind: PerpOrderKind,
+        market_index: u8,
+        is_long: bool,
+        trigger: i64,
+        collateral: u64,
+        leverage_x10: u16,
+    ) -> Result<()> {
+        ix::perps::place_perp_order(ctx, kind, market_index, is_long, trigger, collateral, leverage_x10)
+    }
+
+    pub fn cancel_perp_order(ctx: Context<ManagePerpOrder>, index: u8) -> Result<()> {
+        ix::perps::cancel_perp_order(ctx, index)
+    }
+
+    pub fn execute_perp_order(ctx: Context<ExecutePerpOrder>, index: u8) -> Result<()> {
+        ix::perps::execute_perp_order(ctx, index)
+    }
+
+    pub fn delegate_perp_orders(ctx: Context<DelegatePerpOrders>) -> Result<()> {
+        ix::perps::delegate_perp_orders(ctx)
+    }
+
+    // ------------------------------------------------------------ prediction limit orders
+
+    pub fn open_pool_orders(ctx: Context<OpenPoolOrders>) -> Result<()> {
+        ix::pool::open_pool_orders(ctx)
+    }
+
+    pub fn place_pool_order(ctx: Context<ManagePoolOrder>, is_yes: bool, is_buy: bool, amount: u64, limit_bps: u16) -> Result<()> {
+        ix::pool::place_pool_order(ctx, is_yes, is_buy, amount, limit_bps)
+    }
+
+    pub fn cancel_pool_order(ctx: Context<ManagePoolOrder>, index: u8) -> Result<()> {
+        ix::pool::cancel_pool_order(ctx, index)
+    }
+
+    pub fn execute_pool_order(ctx: Context<ExecutePoolOrder>, index: u8) -> Result<()> {
+        ix::pool::execute_pool_order(ctx, index)
+    }
+
+    pub fn delegate_pool_orders(ctx: Context<DelegatePoolOrders>) -> Result<()> {
+        ix::pool::delegate_pool_orders(ctx)
+    }
+
+    // ------------------------------------------------------------ session keys
+
+    pub fn set_session(ctx: Context<SetSession>, key: Pubkey, expires_at: i64) -> Result<()> {
+        ix::session::set_session(ctx, key, expires_at)
+    }
+
+    pub fn revoke_session(ctx: Context<RevokeSession>) -> Result<()> {
+        ix::session::revoke_session(ctx)
     }
 
     pub fn close_by_stop(ctx: Context<CloseByStop>, side: PerpSide) -> Result<()> {

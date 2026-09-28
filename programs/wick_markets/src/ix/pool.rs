@@ -1,5 +1,6 @@
 use crate::error::WickError;
 use crate::math::{fee_of, fpmm_buy, fpmm_sell};
+use crate::ix::session::{authorize, Session};
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -188,13 +189,15 @@ pub fn claim_lp(ctx: Context<ClaimLp>) -> Result<()> {
 
 // ---------------------------------------------------------------- trading (ER or base)
 
+/// Signed by the owner or their session key (see `session.rs`).
 #[derive(Accounts)]
 pub struct Trade<'info> {
-    pub owner: Signer<'info>,
+    pub signer: Signer<'info>,
     #[account(mut)]
     pub market: Account<'info, Market>,
-    #[account(mut, has_one = owner, has_one = market)]
+    #[account(mut, has_one = market)]
     pub position: Account<'info, Position>,
+    pub session: Option<Account<'info, Session>>,
 }
 
 fn check_tradable(m: &Market) -> Result<()> {
@@ -203,12 +206,9 @@ fn check_tradable(m: &Market) -> Result<()> {
     Ok(())
 }
 
-pub fn buy(ctx: Context<Trade>, side: Side, amount: u64, min_shares: u64) -> Result<()> {
-    let m = &mut ctx.accounts.market;
-    let pos = &mut ctx.accounts.position;
+fn do_buy(m: &mut Account<Market>, pos: &mut Position, side: Side, amount: u64, min_shares: u64) -> Result<u64> {
     check_tradable(m)?;
     require!(amount > 0 && amount <= pos.balance, WickError::InsufficientBalance);
-
     let fee = fee_of(amount, m.fee_bps);
     let net = amount - fee;
     let shares = match side {
@@ -241,12 +241,10 @@ pub fn buy(ctx: Context<Trade>, side: Side, amount: u64, min_shares: u64) -> Res
         yes_price_bps: m.yes_price_bps(),
         ts: Clock::get()?.unix_timestamp,
     });
-    Ok(())
+    Ok(shares)
 }
 
-pub fn sell(ctx: Context<Trade>, side: Side, shares: u64, min_out: u64) -> Result<()> {
-    let m = &mut ctx.accounts.market;
-    let pos = &mut ctx.accounts.position;
+fn do_sell(m: &mut Account<Market>, pos: &mut Position, side: Side, shares: u64, min_out: u64) -> Result<u64> {
     check_tradable(m)?;
     let gross = match side {
         Side::Yes => {
@@ -282,6 +280,169 @@ pub fn sell(ctx: Context<Trade>, side: Side, shares: u64, min_out: u64) -> Resul
         yes_price_bps: m.yes_price_bps(),
         ts: Clock::get()?.unix_timestamp,
     });
+    Ok(out)
+}
+
+pub fn buy(ctx: Context<Trade>, side: Side, amount: u64, min_shares: u64) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.position.owner, &ctx.accounts.session)?;
+    do_buy(&mut ctx.accounts.market, &mut ctx.accounts.position, side, amount, min_shares).map(|_| ())
+}
+
+pub fn sell(ctx: Context<Trade>, side: Side, shares: u64, min_out: u64) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.position.owner, &ctx.accounts.session)?;
+    do_sell(&mut ctx.accounts.market, &mut ctx.accounts.position, side, shares, min_out).map(|_| ())
+}
+
+// ---------------------------------------------------------------- limit orders (ER)
+
+pub const SEED_POOL_ORDERS: &[u8] = b"pool_orders";
+pub const POOL_ORDER_SLOTS: usize = 4;
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, InitSpace)]
+pub struct PoolOrder {
+    pub active: bool,
+    pub is_yes: bool,
+    pub is_buy: bool,
+    /// Escrowed USDC (buys) or shares (sells).
+    pub amount: u64,
+    /// Buy: fill when the side trades at or below this; sell: at or above. In bps (¢ × 100).
+    pub limit_bps: u16,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct PoolOrders {
+    pub owner: Pubkey,
+    pub market: Pubkey,
+    pub orders: [PoolOrder; POOL_ORDER_SLOTS],
+    pub bump: u8,
+}
+
+#[derive(Accounts)]
+pub struct OpenPoolOrders<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    /// CHECK: only used as a seed; the market may be delegated.
+    pub market: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + PoolOrders::INIT_SPACE,
+        seeds = [SEED_POOL_ORDERS, market.key().as_ref(), owner.key().as_ref()],
+        bump,
+    )]
+    pub orders: Account<'info, PoolOrders>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn open_pool_orders(ctx: Context<OpenPoolOrders>) -> Result<()> {
+    ctx.accounts.orders.set_inner(PoolOrders {
+        owner: ctx.accounts.owner.key(),
+        market: ctx.accounts.market.key(),
+        orders: [PoolOrder::default(); POOL_ORDER_SLOTS],
+        bump: ctx.bumps.orders,
+    });
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct ManagePoolOrder<'info> {
+    pub signer: Signer<'info>,
+    pub market: Account<'info, Market>,
+    #[account(mut, has_one = market)]
+    pub position: Account<'info, Position>,
+    #[account(mut, has_one = market, constraint = orders.owner == position.owner @ WickError::Unauthorized)]
+    pub orders: Account<'info, PoolOrders>,
+    pub session: Option<Account<'info, Session>>,
+}
+
+pub fn place_pool_order(ctx: Context<ManagePoolOrder>, is_yes: bool, is_buy: bool, amount: u64, limit_bps: u16) -> Result<()> {
+    authorize(&ctx.accounts.signer.key(), &ctx.accounts.position.owner, &ctx.accounts.session)?;
+    check_tradable(&ctx.accounts.market)?;
+    require!(amount > 0 && limit_bps > 0 && (limit_bps as u64) < BPS, WickError::InvalidParams);
+    let pos = &mut ctx.accounts.position;
+    let book = &mut ctx.accounts.orders;
+    let slot = book.orders.iter().position(|o| !o.active).ok_or(WickError::HouseCapacity)?;
+    // Escrow what the order will spend so it can't be double-spent.
+    let bal = match (is_buy, is_yes) {
+        (true, _) => &mut pos.balance,
+        (false, true) => &mut pos.yes,
+        (false, false) => &mut pos.no,
+    };
+    require!(amount <= *bal, WickError::InsufficientBalance);
+    *bal -= amount;
+    book.orders[slot] = PoolOrder { active: true, is_yes, is_buy, amount, limit_bps };
+    Ok(())
+}
+
+fn refund(pos: &mut Position, o: &PoolOrder) {
+    match (o.is_buy, o.is_yes) {
+        (true, _) => pos.balance += o.amount,
+        (false, true) => pos.yes += o.amount,
+        (false, false) => pos.no += o.amount,
+    }
+}
+
+/// The owner can cancel anytime; anyone can after expiry, so escrow always returns before claims.
+pub fn cancel_pool_order(ctx: Context<ManagePoolOrder>, index: u8) -> Result<()> {
+    if Clock::get()?.unix_timestamp < ctx.accounts.market.expiry {
+        authorize(&ctx.accounts.signer.key(), &ctx.accounts.position.owner, &ctx.accounts.session)?;
+    }
+    let o = ctx.accounts.orders.orders.get_mut(index as usize).ok_or(WickError::InvalidParams)?;
+    require!(o.active, WickError::TicketState);
+    refund(&mut ctx.accounts.position, o);
+    *o = PoolOrder::default();
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct ExecutePoolOrder<'info> {
+    pub keeper: Signer<'info>,
+    #[account(mut)]
+    pub market: Account<'info, Market>,
+    #[account(mut, has_one = market)]
+    pub position: Account<'info, Position>,
+    #[account(mut, has_one = market, constraint = orders.owner == position.owner @ WickError::Unauthorized)]
+    pub orders: Account<'info, PoolOrders>,
+}
+
+/// Permissionless: fills a limit order when the pool can do it at or better than its limit,
+/// measured on the average fill price (so a big order can't walk past the limit).
+pub fn execute_pool_order(ctx: Context<ExecutePoolOrder>, index: u8) -> Result<()> {
+    let o = *ctx.accounts.orders.orders.get(index as usize).ok_or(WickError::InvalidParams)?;
+    require!(o.active, WickError::TicketState);
+    let side = if o.is_yes { Side::Yes } else { Side::No };
+    let pos = &mut ctx.accounts.position;
+    refund(pos, &o);
+    ctx.accounts.orders.orders[index as usize] = PoolOrder::default();
+    let m = &mut ctx.accounts.market;
+    if o.is_buy {
+        let shares = do_buy(m, pos, side, o.amount, 0)?;
+        // avg price = amount / shares ≤ limit
+        require!(o.amount as u128 * BPS as u128 <= shares as u128 * o.limit_bps as u128, WickError::Slippage);
+    } else {
+        let out = do_sell(m, pos, side, o.amount, 0)?;
+        require!(out as u128 * BPS as u128 >= o.amount as u128 * o.limit_bps as u128, WickError::Slippage);
+    }
+    Ok(())
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegatePoolOrders<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: only used as a seed.
+    pub market_key: UncheckedAccount<'info>,
+    /// CHECK: the payer's order book PDA for this market; delegation changes its owner.
+    #[account(mut, del, seeds = [SEED_POOL_ORDERS, market_key.key().as_ref(), payer.key().as_ref()], bump)]
+    pub orders: UncheckedAccount<'info>,
+}
+
+pub fn delegate_pool_orders(ctx: Context<DelegatePoolOrders>) -> Result<()> {
+    let market = ctx.accounts.market_key.key();
+    let payer = ctx.accounts.payer.key();
+    ctx.accounts.delegate_orders(&ctx.accounts.payer, &[SEED_POOL_ORDERS, market.as_ref(), payer.as_ref()], DelegateConfig::default())?;
     Ok(())
 }
 

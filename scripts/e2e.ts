@@ -51,11 +51,11 @@ const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
   for (let i = 0; i < 20 && !(await erConn.getAccountInfo(position)); i++) await sleep(500);
 
   const t0 = Date.now();
-  await send(erConn, [await mkEr.methods.buy({ yes: {} }, new BN(40_000_000), new BN(0)).accountsPartial({ owner: user.publicKey, market, position }).instruction()], [user]);
+  await send(erConn, [await mkEr.methods.buy({ yes: {} }, new BN(40_000_000), new BN(0)).accountsPartial({ signer: user.publicKey, market, position }).instruction()], [user]);
   log(`ER buy YES 40 in ${Date.now() - t0}ms`);
   let pos = await mkEr.account.position.fetch(position);
   log("position", pos.balance.toNumber() / 1e6, "credit,", pos.yes.toNumber() / 1e6, "YES");
-  await send(erConn, [await mkEr.methods.sell({ yes: {} }, new BN(Math.floor(pos.yes.toNumber() / 2)), new BN(0)).accountsPartial({ owner: user.publicKey, market, position }).instruction()], [user]);
+  await send(erConn, [await mkEr.methods.sell({ yes: {} }, new BN(Math.floor(pos.yes.toNumber() / 2)), new BN(0)).accountsPartial({ signer: user.publicKey, market, position }).instruction()], [user]);
   pos = await mkEr.account.position.fetch(position);
   const m = await mkEr.account.market.fetch(market);
   log("after sell:", pos.balance.toNumber() / 1e6, "credit,", pos.yes.toNumber() / 1e6, "YES; market YES =", (m.noReserve.toNumber() / (m.yesReserve.toNumber() + m.noReserve.toNumber())).toFixed(3));

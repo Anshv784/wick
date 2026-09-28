@@ -95,7 +95,7 @@ async function main() {
   const poolEr = await marketsEr.account.perpPool.fetch(pool);
   const accEr = await marketsEr.account.perpAccount.fetch(account);
   if (accEr.credit.toNumber() > 0) {
-    await marketsEr.methods.lpDeposit(accEr.credit).accountsPartial({ owner: admin.publicKey, pool, account }).rpc({ commitment: "confirmed" });
+    await marketsEr.methods.lpDeposit(accEr.credit).accountsPartial({ signer: admin.publicKey, pool, account }).rpc({ commitment: "confirmed" });
     log("house LP deposit on ER", accEr.credit.toNumber() / USDC);
   }
   const after = await marketsEr.account.perpPool.fetch(pool);

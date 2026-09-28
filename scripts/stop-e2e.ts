@@ -47,7 +47,7 @@ const USDC = 1_000_000;
   const market = perpPda.market("SOL");
   await er.methods
     .openPerp({ long: {} }, new BN(50 * USDC), 200, new BN("100000000000000"))
-    .accountsPartial({ owner: user.publicKey, pool: perpPda.pool(), market, account, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount) })
+    .accountsPartial({ signer: user.publicKey, pool: perpPda.pool(), market, account, priceUpdate: new PublicKey(d.oracles.SOL.pythAccount) })
     .rpc({ commitment: "confirmed" });
   const entry = (await er.account.perpAccount.fetch(account)).slots[0].entryPrice.toNumber() / 1e8;
   log(`opened 20x long SOL at $${entry.toFixed(3)}`);

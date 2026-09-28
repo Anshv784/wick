@@ -8,6 +8,80 @@
   },
   "instructions": [
     {
+      "name": "adjust_margin",
+      "discriminator": [
+        14,
+        55,
+        115,
+        80,
+        174,
+        90,
+        52,
+        253
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "price_update"
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "PerpSide"
+            }
+          }
+        },
+        {
+          "name": "add",
+          "type": "bool"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "buy",
       "discriminator": [
         102,
@@ -21,11 +95,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "position"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "market",
@@ -37,6 +108,10 @@
         {
           "name": "position",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -169,6 +244,112 @@
               "name": "BuyTicketArgs"
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "cancel_perp_order",
+      "discriminator": [
+        172,
+        79,
+        207,
+        17,
+        243,
+        214,
+        242,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "PerpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "cancel_pool_order",
+      "discriminator": [
+        151,
+        176,
+        91,
+        178,
+        182,
+        171,
+        25,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
         }
       ]
     },
@@ -459,11 +640,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -497,6 +675,10 @@
         },
         {
           "name": "price_update"
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -511,6 +693,10 @@
         {
           "name": "limit_price",
           "type": "i64"
+        },
+        {
+          "name": "fraction_bps",
+          "type": "u16"
         }
       ]
     },
@@ -1339,6 +1525,198 @@
       ]
     },
     {
+      "name": "delegate_perp_orders",
+      "discriminator": [
+        152,
+        133,
+        0,
+        252,
+        84,
+        122,
+        53,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "buffer_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "payer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegate_perp_pool",
       "discriminator": [
         22,
@@ -1505,6 +1883,205 @@
                   111,
                   108
                 ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegate_pool_orders",
+      "discriminator": [
+        201,
+        169,
+        244,
+        154,
+        110,
+        177,
+        204,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market_key"
+        },
+        {
+          "name": "buffer_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "orders"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market_key"
+              },
+              {
+                "kind": "account",
+                "path": "payer"
               }
             ]
           }
@@ -1783,6 +2360,134 @@
         {
           "name": "amount",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "execute_perp_order",
+      "discriminator": [
+        237,
+        180,
+        18,
+        156,
+        56,
+        179,
+        35,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "PerpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_update"
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "execute_pool_order",
+      "discriminator": [
+        243,
+        13,
+        27,
+        45,
+        183,
+        11,
+        11,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u8"
         }
       ]
     },
@@ -2087,11 +2792,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2118,6 +2820,10 @@
         {
           "name": "account",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2141,11 +2847,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2172,6 +2875,10 @@
         {
           "name": "account",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2195,11 +2902,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "account"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "pool",
@@ -2233,6 +2937,10 @@
         },
         {
           "name": "price_update"
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2297,6 +3005,119 @@
                   110,
                   116
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_perp_orders",
+      "discriminator": [
+        12,
+        207,
+        69,
+        244,
+        231,
+        152,
+        112,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_pool_orders",
+      "discriminator": [
+        44,
+        89,
+        183,
+        240,
+        46,
+        180,
+        90,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
               },
               {
                 "kind": "account",
@@ -2538,6 +3359,148 @@
       ]
     },
     {
+      "name": "place_perp_order",
+      "discriminator": [
+        69,
+        161,
+        93,
+        202,
+        120,
+        126,
+        76,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account.owner",
+                "account": "PerpAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "kind",
+          "type": {
+            "defined": {
+              "name": "PerpOrderKind"
+            }
+          }
+        },
+        {
+          "name": "market_index",
+          "type": "u8"
+        },
+        {
+          "name": "is_long",
+          "type": "bool"
+        },
+        {
+          "name": "trigger",
+          "type": "i64"
+        },
+        {
+          "name": "collateral",
+          "type": "u64"
+        },
+        {
+          "name": "leverage_x10",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "place_pool_order",
+      "discriminator": [
+        159,
+        84,
+        168,
+        4,
+        161,
+        4,
+        163,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": [
+            "position",
+            "orders"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "orders",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "is_yes",
+          "type": "bool"
+        },
+        {
+          "name": "is_buy",
+          "type": "bool"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "limit_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "process_undelegation",
       "discriminator": [
         196,
@@ -2643,6 +3606,54 @@
       ]
     },
     {
+      "name": "revoke_session",
+      "discriminator": [
+        86,
+        92,
+        198,
+        120,
+        144,
+        2,
+        7,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sell",
       "discriminator": [
         51,
@@ -2656,11 +3667,8 @@
       ],
       "accounts": [
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "position"
-          ]
+          "name": "signer",
+          "signer": true
         },
         {
           "name": "market",
@@ -2672,6 +3680,10 @@
         {
           "name": "position",
           "writable": true
+        },
+        {
+          "name": "session",
+          "optional": true
         }
       ],
       "args": [
@@ -2690,6 +3702,64 @@
         {
           "name": "min_out",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_session",
+      "discriminator": [
+        156,
+        135,
+        126,
+        111,
+        184,
+        206,
+        194,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "key",
+          "type": "pubkey"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
         }
       ]
     },
@@ -3037,6 +4107,19 @@
       ]
     },
     {
+      "name": "PerpOrders",
+      "discriminator": [
+        195,
+        160,
+        127,
+        117,
+        141,
+        165,
+        14,
+        106
+      ]
+    },
+    {
       "name": "PerpPool",
       "discriminator": [
         85,
@@ -3050,6 +4133,19 @@
       ]
     },
     {
+      "name": "PoolOrders",
+      "discriminator": [
+        242,
+        166,
+        49,
+        159,
+        6,
+        110,
+        229,
+        2
+      ]
+    },
+    {
       "name": "Position",
       "discriminator": [
         170,
@@ -3060,6 +4156,19 @@
         64,
         247,
         208
+      ]
+    },
+    {
+      "name": "Session",
+      "discriminator": [
+        243,
+        81,
+        72,
+        115,
+        214,
+        188,
+        72,
+        144
       ]
     },
     {
@@ -3840,6 +4949,98 @@
       }
     },
     {
+      "name": "PerpOrder",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "PerpOrderKind"
+              }
+            }
+          },
+          {
+            "name": "market_index",
+            "type": "u8"
+          },
+          {
+            "name": "is_long",
+            "type": "bool"
+          },
+          {
+            "name": "trigger",
+            "type": "i64"
+          },
+          {
+            "name": "collateral",
+            "docs": [
+              "Escrowed collateral for limit opens."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "leverage_x10",
+            "type": "u16"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PerpOrderKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "None"
+          },
+          {
+            "name": "LimitOpen"
+          },
+          {
+            "name": "TakeProfit"
+          },
+          {
+            "name": "StopLoss"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PerpOrders",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "orders",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PerpOrder"
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "PerpPool",
       "type": {
         "kind": "struct",
@@ -3939,6 +5140,73 @@
           {
             "name": "ts",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolOrder",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "active",
+            "type": "bool"
+          },
+          {
+            "name": "is_yes",
+            "type": "bool"
+          },
+          {
+            "name": "is_buy",
+            "type": "bool"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Escrowed USDC (buys) or shares (sells)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "limit_bps",
+            "docs": [
+              "Buy: fill when the side trades at or below this; sell: at or above. In bps (¢ × 100)."
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolOrders",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "orders",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PoolOrder"
+                  }
+                },
+                4
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -4087,6 +5355,30 @@
           {
             "name": "posted_slot",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Session",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "key",
+            "type": "pubkey"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

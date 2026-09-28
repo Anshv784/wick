@@ -16,7 +16,7 @@ const mono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["lati
 export const metadata: Metadata = {
   title: "Wick — trade the path, not just the close",
   description:
-    "Prediction markets on Solana with touch bets, sealed Arcium batches and dual-oracle settlement.",
+    "Wick-proof perps and prediction markets on Solana: dual-oracle liquidations and settlement, MagicBlock execution, Arcium privacy.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

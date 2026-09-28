@@ -4,8 +4,8 @@
 
 **Trade the wick, not just the close.**
 
-Prediction markets on Solana with instant trading on MagicBlock, touch bets on the price path, and sealed Arcium batches.
-Every payout requires **Pyth and Switchboard to agree**.
+Wick-proof perps and prediction markets on Solana.
+Liquidations, settlements and payouts all require **Pyth and Switchboard to agree**.
 
 </div>
 
@@ -13,7 +13,18 @@ Every payout requires **Pyth and Switchboard to agree**.
 
 ## What it is
 
-Every Wick market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* You can take that view three ways:
+### Perpetuals: leverage that survives the wick
+Long or short **SOL, BTC and ETH up to 50×**, executed on a MagicBlock rollup in about a second, against an LP pool anyone can join.
+
+| | Feature | How |
+|---|---|---|
+| 🛡️ | **Wick-proof liquidations** | A position is only liquidated when Pyth **and** Switchboard both put it under maintenance margin, fresh and close to each other |
+| 🔥 | **Liquidation insurance** | One click buys a touch ticket at your liquidation price, sized to repay your collateral if it's ever hit |
+| 🔒 | **Hidden stop-losses** | Your stop is encrypted to Arcium; MPC compares it with the on-chain Pyth mark and reveals only "crossed or not" |
+| 🏦 | **LP pool** | Earns fees, borrow and trader losses; each position's max profit is reserved at open so the pool never over-promises |
+
+### Prediction markets
+Every market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* You can take that view three ways:
 
 | | Mode | What you're betting on | Runs on |
 |---|---|---|---|
@@ -50,6 +61,40 @@ flowchart LR
 - **`wick_markets`** (Anchor) holds markets, the FPMM pool, touch books, dual-oracle settlement, and MagicBlock delegation.
 - **`wick`** (Arcium MXE) runs the sealed batch and reads each market's outcome from `wick_markets`.
 - **The keeper** refreshes both oracles and runs every permissionless crank: confirming touches, undelegating, settling, revealing, and paying sealed orders. Anyone can run these; the keeper just saves users the clicks. It also keeps a line-up of markets live, opening a new market (with sequential ids, so the app finds it automatically) whenever one runs out.
+
+### Wick-proof liquidation
+
+```mermaid
+flowchart LR
+  A[keeper or anyone<br/>calls liquidate_perp] --> B{Pyth ≤ 30s old<br/>Switchboard ≤ 60s old?}
+  B -- no --> X[reject]
+  B -- yes --> C{Oracles within<br/>max gap?}
+  C -- no --> X
+  C -- yes --> D{Equity < maintenance<br/>at BOTH prices?}
+  D -- no --> X
+  D -- yes --> L[liquidate · trader keeps<br/>equity above the fee]
+```
+
+### Perp trade flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor T as Trader
+  participant B as Solana (base)
+  participant E as MagicBlock ER
+  participant A as Arcium
+  T->>B: deposit USDC + delegate trading account
+  T->>E: open 20x long SOL at the Pyth price (~1s)
+  T->>B: optional touch ticket at liq price (insurance)
+  T->>B: set_stop(encrypted stop price)
+  loop every ~30s
+    B->>A: check_stop(stop, on-chain Pyth mark)
+    A-->>B: crossed? (yes / no only)
+  end
+  E->>E: close · close_by_stop · liquidate
+  T->>B: withdraw USDC
+```
 
 ### Market lifecycle
 
@@ -124,6 +169,10 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 
 | Threat | Mitigation |
 |---|---|
+| A flash wick liquidates a perp | Liquidation needs both oracles under maintenance, fresh and within the max gap |
+| The perp pool over-promises | Each position's max profit (10× collateral) is reserved at open; LPs can't withdraw reserved liquidity |
+| Stop-loss hunting | Stops are encrypted to Arcium; only "crossed or not" is revealed, and only for the position they were set on |
+| A keeper fakes the mark for a stop | The stop check reads the pinned Pyth account on-chain; nobody can supply a price |
 | One oracle is wrong or manipulated | Both must agree on side and within the max gap, or the market freezes |
 | Settler picks a favourable print | Only the market's pinned Pyth push feed, printed within 5 minutes of expiry; a freeze can still resolve if they agree later in the window |
 | Stale touch quotes | Quotes use the pinned push feed (≤20s old) and price off whichever oracle is less favourable to the buyer |
@@ -143,6 +192,8 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 
 A full lifecycle ran against devnet with scripted users:
 
+- **Perps:** a 20× long SOL ($1,000 size) opened on MagicBlock in ~1s at $119.84 with a $114.59 liquidation price, then closed in 1.4s. The pool's liquidity, reserve and fees reconciled exactly.
+
 - **Instant:** deposit, delegate, then buy and sell on MagicBlock in about 1 second each.
 - **Touch:** tickets priced on-chain; 3 were confirmed as winners when both oracles printed through the level.
 - **Settlement:** the market settled NO on Pyth $122.874 and Switchboard $122.88, 34 seconds after expiry.
@@ -155,14 +206,14 @@ A full lifecycle ran against devnet with scripted users:
 |---|---|
 | Markets program | `336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow` |
 | Sealed program (Arcium, cluster 456) | `8YY5NCZCPRcRy6tTPq3awnwW84LLe5LgECHNUNfx1wuT` |
-| Mint, oracles, markets | [`app/src/deployment.json`](app/src/deployment.json) |
+| Mint, oracles, markets, perps | [`app/src/deployment.json`](app/src/deployment.json) |
 
 ## Repository
 
 ```
-programs/wick_markets   markets, FPMM pool, touch book, dual-oracle settlement, ER delegation
-programs/wick           Arcium sealed batch (MXE program)
-encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order
+programs/wick_markets   perps + LP pool, prediction markets, FPMM pool, touch books, dual-oracle settlement, ER delegation
+programs/wick           Arcium MXE program: sealed batches, hidden stop-losses
+encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order, check_stop
 app                     Next.js frontend: Three.js landing (/), marketplace (/markets), market pages, portfolio, /docs
 scripts                 setup · keeper · markets (open/discover) · oracles · status · e2e · claim
 ```
@@ -175,6 +226,7 @@ yarn && arcium build
 cargo test -p wick_markets --lib     # pool, pricing and oracle-parsing tests
 
 yarn setup                           # test USDC mint, oracle accounts, Arcium comp defs, markets
+yarn perps-setup                     # perp LP pool + SOL/BTC/ETH markets, delegated to the ER
 yarn keeper                          # oracle cranks, touch confirmation, settlement, sealed payouts
 yarn status                          # one-screen snapshot of every market, batch and ticket
 yarn e2e                             # scripted user: deposit → trade → touch → sealed order

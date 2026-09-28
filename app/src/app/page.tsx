@@ -28,6 +28,7 @@ export default function Landing() {
   return (
     <div className="overflow-x-clip">
       <Hero />
+      <Perps />
       <Modes />
       <LiveStrip />
       <Settlement />
@@ -64,7 +65,8 @@ function Hero() {
           <span className="font-display text-[28px] leading-none tracking-tight">Wick</span>
         </Link>
         <nav className="hidden items-center gap-6 text-[13px] text-muted md:flex">
-          <a href="#modes" className="hover:text-paper">Product</a>
+          <a href="#perps" className="hover:text-paper">Perps</a>
+          <a href="#modes" className="hover:text-paper">Markets</a>
           <a href="#settlement" className="hover:text-paper">Settlement</a>
           <Link href="/docs" className="hover:text-paper">Docs</Link>
         </nav>
@@ -100,8 +102,9 @@ function Hero() {
           transition={{ duration: 0.8, delay: 0.35 }}
           className="mt-7 max-w-lg text-[17px] leading-relaxed text-muted"
         >
-          Prediction markets where you can bet on the path a price takes, trade instantly on a rollup, or place orders nobody can
-          read. Nothing pays until <span className="text-paper">Pyth</span> and <span className="text-paper">Switchboard</span> agree.
+          Perps up to 50× that a single bad print can&apos;t liquidate, and prediction markets where you bet on the path a price
+          takes. Nothing moves money until <span className="text-paper">Pyth</span> and{" "}
+          <span className="text-paper">Switchboard</span> agree.
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 14 }}
@@ -132,11 +135,63 @@ function Hero() {
   );
 }
 
+function Perps() {
+  const features = [
+    {
+      k: "Wick-proof liquidations",
+      v: "A position is only liquidated when Pyth and Switchboard both put it under maintenance. One feed's flash wick can't wipe you out.",
+    },
+    {
+      k: "Up to 50×, in about a second",
+      v: "SOL, BTC and ETH perps execute on a MagicBlock rollup against an LP pool: no gas, no waiting for blocks.",
+    },
+    {
+      k: "Liquidation insurance",
+      v: "One click buys a touch ticket at your liquidation price. If you do get liquidated, it pays your collateral back.",
+    },
+    {
+      k: "Stops nobody can hunt",
+      v: "Stop-losses are encrypted in your browser. Arcium checks them against the oracle and reveals only whether they fired.",
+    },
+  ];
+  return (
+    <section id="perps" className="mx-auto max-w-[1280px] scroll-mt-10 px-4 pt-28 sm:px-6">
+      <div className="grid items-start gap-14 lg:grid-cols-[1fr_1.1fr]">
+        <motion.div {...fade}>
+          <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Perpetuals</p>
+          <h2 className="font-display mt-3 text-[48px] leading-[1] tracking-tight sm:text-[64px]">
+            Leverage that survives <em className="text-flame">the wick</em>.
+          </h2>
+          <p className="mt-6 max-w-md text-[16px] leading-relaxed text-muted">
+            Most liquidations aren&apos;t about where the price goes. They&apos;re about one bad tick on one feed. Wick won&apos;t close
+            your position until two independent oracles agree it should.
+          </p>
+          <Link
+            href="/perps"
+            className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-flame px-6 text-[14px] font-semibold text-ink transition hover:brightness-110"
+          >
+            Trade perps →
+          </Link>
+        </motion.div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {features.map((f, i) => (
+            <motion.div key={f.k} {...fade} transition={{ ...fade.transition, delay: i * 0.08 }} className="panel p-5">
+              <div className="num text-[11px] text-flame-2">0{i + 1}</div>
+              <div className="mt-2 text-[16px] font-semibold tracking-tight">{f.k}</div>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted">{f.v}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Modes() {
   return (
     <section id="modes" className="mx-auto max-w-[1280px] scroll-mt-10 px-4 py-28 sm:px-6">
       <motion.div {...fade}>
-        <p className="num text-[12px] tracking-wide text-flame-2 uppercase">One market · three ways in</p>
+        <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Prediction markets · three ways in</p>
         <h2 className="font-display mt-3 max-w-2xl text-[48px] leading-[1] tracking-tight sm:text-[64px]">
           Every question, <em className="text-muted">your way</em>.
         </h2>
@@ -450,7 +505,8 @@ function Footer() {
         </span>
         <span className="text-faint">{syms.join(" · ")} markets</span>
         <span className="ml-auto flex gap-5">
-          <Link href="/markets" className="hover:text-paper">App</Link>
+          <Link href="/perps" className="hover:text-paper">Perps</Link>
+          <Link href="/markets" className="hover:text-paper">Markets</Link>
           <Link href="/docs" className="hover:text-paper">Docs</Link>
           <Link href="/portfolio" className="hover:text-paper">Portfolio</Link>
         </span>

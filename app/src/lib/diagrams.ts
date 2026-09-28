@@ -2,12 +2,12 @@
 
 export const ARCHITECTURE = `flowchart LR
   U([Trader]) --> APP[Next.js app]
-  APP -- "buy / sell (~1s, no gas)" --> ER[(MagicBlock ER)]
+  APP -- "perps + pool trades (~1s, no gas)" --> ER[(MagicBlock ER)]
   APP -- "deposit · touch · claim" --> MK
   APP -- "encrypted order" --> SB
   subgraph Solana devnet
-    MK[wick_markets<br/>pool · touch book · settle]
-    SB[wick sealed batch<br/>Arcium MXE]
+    MK[wick_markets<br/>perps · LP pool · prediction markets<br/>touch books · settlement]
+    SB[wick · Arcium MXE<br/>sealed batches · hidden stops]
   end
   ER <-- "delegate / commit + undelegate" --> MK
   SB -- "queue computation" --> ARX{{Arcium cluster}}
@@ -16,7 +16,7 @@ export const ARCHITECTURE = `flowchart LR
   PY[(Pyth push feed)] --> MK
   SW[(Switchboard quote)] --> MK
   K[[Keeper]] -- "price cranks" --> PY & SW
-  K -- "confirm · settle · reveal" --> MK & SB`;
+  K -- "liquidate · stops · settle · reveal" --> MK & SB`;
 
 export const LIFECYCLE = `stateDiagram-v2
   [*] --> Open: create_market + touch book + sealed batch
@@ -89,3 +89,29 @@ export const SEALED = `sequenceDiagram
   P->>A: reveal_order(order)
   A-->>P: side, size → program computes payout
   T->>P: withdraw_payout`;
+
+export const PERPS = `sequenceDiagram
+  autonumber
+  actor T as Trader
+  participant B as Solana (base)
+  participant E as MagicBlock ER
+  participant A as Arcium
+  T->>B: perp_deposit + delegate account
+  T->>E: open_perp(20x long SOL) at Pyth price
+  T->>B: optional: touch ticket at liq price (insurance)
+  T->>B: set_stop(encrypted stop price)
+  loop every ~30s
+    B->>A: check_stop(stop, oracle mark)
+    A-->>B: hit? (yes/no only)
+  end
+  E->>E: close_by_stop / close_perp / liquidate_perp
+  T->>B: undelegate + perp_withdraw`;
+
+export const LIQUIDATION = `flowchart LR
+  A[keeper or anyone<br/>calls liquidate_perp] --> B{Pyth ≤ 30s old<br/>Switchboard ≤ 60s old?}
+  B -- no --> X[reject]
+  B -- yes --> C{Oracles within<br/>max gap?}
+  C -- no --> X
+  C -- yes --> D{Equity < maintenance<br/>at BOTH prices?}
+  D -- no --> X
+  D -- yes --> L[liquidate · trader keeps<br/>any equity above the fee]`;

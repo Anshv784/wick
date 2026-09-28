@@ -3,11 +3,13 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Mermaid } from "@/components/Mermaid";
 import deployment from "@/deployment.json";
-import { ARCHITECTURE, INSTANT, LIFECYCLE, SEALED, SETTLEMENT, TOUCH } from "@/lib/diagrams";
+import { ARCHITECTURE, INSTANT, LIFECYCLE, LIQUIDATION, PERPS, SEALED, SETTLEMENT, TOUCH } from "@/lib/diagrams";
 
 const SECTIONS = [
   ["overview", "Overview"],
   ["architecture", "Architecture"],
+  ["perps", "Perpetuals"],
+  ["liquidation", "Wick-proof liquidation"],
   ["lifecycle", "Market lifecycle"],
   ["instant", "Instant trading"],
   ["touch", "Touch bets"],
@@ -52,12 +54,14 @@ export default function Docs() {
       <article className="max-w-[860px] min-w-0 space-y-20 pb-20">
         <Section id="overview" kicker="Wick" title="Trade the wick, not just the close.">
           <P>
-            Wick markets ask one question: <b>will this asset be at or above the strike at expiry?</b> You can take that view
-            three ways, and every one of them settles only when two independent oracles agree.
+            Wick has two products. <b>Perpetuals</b>: long or short SOL, BTC and ETH up to 50×, liquidated only when two
+            independent oracles agree. <b>Prediction markets</b>: will an asset be at or above a strike at expiry, which you can
+            trade three ways below. Every payout, liquidation and settlement needs Pyth and Switchboard to agree.
           </P>
           <Table
             head={["Mode", "What you're betting on", "Runs on"]}
             rows={[
+              ["Perps", "Leveraged longs and shorts against an LP pool, with insurance and hidden stops", "MagicBlock ER + Arcium"],
               ["Instant", "YES/NO shares against an FPMM pool; buy and sell anytime", "MagicBlock ephemeral rollup"],
               ["Touch", "Price trades through a level at any moment before expiry", "Solana, backed by a house vault"],
               ["Sealed", "Encrypted side and size, filled at one clearing price", "Arcium MPC"],
@@ -73,6 +77,30 @@ export default function Docs() {
             Solana to settle.
           </P>
           <Mermaid chart={ARCHITECTURE} />
+        </Section>
+
+        <Section id="perps" kicker="Wick-proof perps" title="Perpetuals">
+          <P>
+            Positions are priced off the market&apos;s pinned Pyth feed and executed on the MagicBlock rollup. The LP pool is the
+            counterparty: it earns 0.06% open and close fees, 0.01% per hour borrow, and trader losses, and it pays trader profits.
+            Each position&apos;s max profit (10× its collateral) is reserved in the pool at open, so the pool can never promise
+            more than it holds. USDC only moves on Solana, into and out of your trading account.
+          </P>
+          <Mermaid chart={PERPS} />
+          <P>
+            <b>Liquidation insurance</b> is a touch ticket at your liquidation price on the asset&apos;s longest-running prediction
+            market, sized to repay your collateral. <b>Hidden stops</b> are encrypted to the Arcium MXE; the cluster compares them
+            with the on-chain Pyth mark and reveals only whether they were crossed.
+          </P>
+        </Section>
+
+        <Section id="liquidation" kicker="The core idea" title="Wick-proof liquidation">
+          <P>
+            A liquidation needs both oracles, fresh and close to each other, to put the position under 0.5% maintenance margin.
+            A flash wick on one feed can&apos;t trigger it. What&apos;s left of the collateral above the liquidation fee goes back
+            to the trader.
+          </P>
+          <Mermaid chart={LIQUIDATION} />
         </Section>
 
         <Section id="lifecycle" kicker="State machine" title="Market lifecycle">
@@ -132,6 +160,10 @@ P(↑ before ↓) = min( ln(spot / low) / ln(high / low),  P(touch high) )`}
           <Table
             head={["Threat", "Mitigation"]}
             rows={[
+              ["A flash wick liquidates a perp", "Liquidation needs Pyth and Switchboard both under maintenance, fresh and within the max gap"],
+              ["The perp pool over-promises", "Each position's max profit (10× collateral) is reserved at open; withdrawals can't touch reserved liquidity"],
+              ["Stop-loss hunting", "Stops are encrypted to Arcium; only 'crossed or not' is revealed, and only for the position they were set on"],
+              ["A keeper fakes the mark for a stop", "The stop check reads the pinned Pyth account on-chain; the caller can't supply a price"],
               ["One oracle is wrong or manipulated", "Both must agree on side and within max gap, or the market freezes"],
               ["Settler shops for a favourable print", "Settlement only accepts the market's pinned Pyth push feed, printed within 5 minutes of expiry; a freeze can still resolve if they agree later in the window"],
               ["Stale touch quotes", "Quotes use the pinned push feed (≤20s old) and price off whichever oracle is less favourable to the buyer"],
@@ -156,6 +188,7 @@ P(↑ before ↓) = min( ln(spot / low) / ln(high / low),  P(touch high) )`}
               ["Markets program", deployment.marketsProgram],
               ["Sealed program (Arcium, cluster 456)", deployment.sealedProgram],
               ["Test USDC mint", deployment.mint],
+              ["Perp LP pool", (deployment as unknown as { perps?: { pool: string } }).perps?.pool ?? "—"],
               ...Object.entries((deployment as unknown as { oracles: Record<string, { pythAccount: string; sbQuote: string }> }).oracles ?? {}).flatMap(
                 ([s, o]) => [
                   [`${s} Pyth push feed`, o.pythAccount],

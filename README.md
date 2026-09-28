@@ -193,6 +193,7 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 A full lifecycle ran against devnet with scripted users:
 
 - **Perps:** a 20× long SOL ($1,000 size) opened on MagicBlock in ~1s at $119.84 with a $114.59 liquidation price, then closed in 1.4s. The pool's liquidity, reserve and fees reconciled exactly.
+- **Hidden stop:** an encrypted stop on a 20× long fired after one Arcium check and the keeper closed the position on MagicBlock 19s after the stop was armed; the stop price never appeared on-chain.
 
 - **Instant:** deposit, delegate, then buy and sell on MagicBlock in about 1 second each.
 - **Touch:** tickets priced on-chain; 3 were confirmed as winners when both oracles printed through the level.

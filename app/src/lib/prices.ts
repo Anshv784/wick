@@ -13,6 +13,17 @@ const last = new Map<string, Tick>();
 let source: EventSource | null = null;
 let sourceIds = "";
 
+let pending: ReturnType<typeof setTimeout> | null = null;
+
+/** Batches subscription changes so several components mounting together open one stream. */
+function scheduleConnect() {
+  if (pending) return;
+  pending = setTimeout(() => {
+    pending = null;
+    connect();
+  }, 60);
+}
+
 function connect() {
   const ids = [...listeners.keys()].sort();
   const key = ids.join(",");
@@ -39,7 +50,7 @@ function connect() {
   source.onerror = () => {
     source?.close();
     source = null;
-    setTimeout(connect, 1500);
+    setTimeout(scheduleConnect, 1500);
   };
 }
 
@@ -51,7 +62,7 @@ export function useLivePrice(symbol: AssetSymbol | undefined) {
     const set = listeners.get(id) ?? new Set();
     set.add(setTick);
     listeners.set(id, set);
-    connect();
+    scheduleConnect();
     return () => {
       set.delete(setTick);
       if (!set.size) listeners.delete(id);

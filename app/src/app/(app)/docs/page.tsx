@@ -88,6 +88,11 @@ export default function Docs() {
           </P>
           <Mermaid chart={PERPS} />
           <P>
+            <b>Orders:</b> limit opens (collateral escrowed), take-profit and stop-loss orders are filled by the keeper once the
+            pinned Pyth price crosses the trigger. Positions can be partly closed or re-margined. <b>One-click trading</b> uses a
+            24h session key the wallet authorises once, so rollup trades need no wallet popup.
+          </P>
+          <P>
             <b>Liquidation insurance</b> is a touch ticket at your liquidation price on the asset&apos;s longest-running prediction
             market, sized to repay your collateral. <b>Hidden stops</b> are encrypted to the Arcium MXE; the cluster compares them
             with the on-chain Pyth mark and reveals only whether they were crossed.
@@ -176,6 +181,8 @@ P(↑ before ↓) = min( ln(spot / low) / ln(high / low),  P(touch high) )`}
               ["Near-certain touch tickets", "Quotes above 95% are refused, not clamped"],
               ["“↑ before ↓” order disputes", "Its confirmations must use prints under 20s old, so the order of events is fixed in real time"],
               ["Stuck MPC computations", "Order payouts, batch reveals and inits can all be re-queued after a timeout"],
+              ["A stolen session key", "It can only trade inside the owner's rollup accounts (never withdraw) and expires within 24h"],
+              ["Limit orders walking the pool", "Prediction limit fills are checked on the average fill price"],
             ]}
           />
           <P>These are unaudited devnet contracts using a test USDC mint.</P>

@@ -13,8 +13,11 @@ import { ASSETS, AssetSymbol, assetFromBytes } from "@/lib/assets";
 import { countdown, fmtNum, fmtUsd } from "@/lib/format";
 import { useBook, useMarkets, useNow, usePoll, useUsdc } from "@/lib/hooks";
 import {
+  adjustMargin,
   borrowOwed,
+  cancelPerpOrder,
   closePerp,
+  placePerpOrder,
   depositPerp,
   fetchPerps,
   liqPrice,
@@ -82,6 +85,7 @@ export default function PerpsPage() {
             <PriceChart symbol={symbol} lines={lines} height={440} />
           </div>
           <Positions perps={perps.data} refresh={perps.refresh} />
+          <OpenOrders perps={perps.data} refresh={perps.refresh} />
           <MarketStats m={m} pool={perps.data?.pool?.data} price={tick?.price} />
         </div>
         <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
@@ -116,6 +120,11 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
   const { push } = useToast();
   const tick = useLivePrice(symbol);
   const [side, setSide] = useState<Side>("long");
+  const [type, setType] = useState<"market" | "limit">("market");
+  const [limitPx, setLimitPx] = useState("");
+  const [tp, setTp] = useState("");
+  const [sl, setSl] = useState("");
+  const [showTpsl, setShowTpsl] = useState(false);
   const [collateral, setCollateral] = useState("50");
   const [lev, setLev] = useState(20);
   const [insure, setInsure] = useState(true);
@@ -124,7 +133,9 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
   const acc = perps?.account?.data;
   const pool = perps?.pool?.data;
   const credit = acc ? acc.credit.toNumber() / 1e6 : 0;
-  const price = tick?.price ?? 0;
+  const live = tick?.price ?? 0;
+  const limitValue = Number(limitPx);
+  const price = type === "limit" && limitValue > 0 ? limitValue : live;
   const col = Number(collateral) || 0;
   const size = col * lev;
   const openFee = m ? (size * m.openFeeBps) / 10_000 : 0;
@@ -137,10 +148,23 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
     if (!wallet || !m) return;
     setBusy(true);
     try {
+      if (type === "limit") {
+        const sig = await placePerpOrder(wallet, symbol, side, "limitOpen", limitValue, col, lev);
+        push({ kind: "ok", title: `Limit ${side} ${symbol} placed at ${fmtUsd(limitValue)}`, body: "Collateral is escrowed; the keeper fills it when the oracle price gets there.", sig, er: true });
+        refresh();
+        return;
+      }
       const limit = side === "long" ? price * (1 + SLIPPAGE) : price * (1 - SLIPPAGE);
       const sig = await openPerp(wallet, symbol, side, col, lev, limit);
       push({ kind: "ok", title: `${lev}x ${side} ${symbol} opened`, body: `Liquidation ≈ ${fmtUsd(liq)} and only if both oracles agree.`, sig, er: true });
-      if (insure && insurance.quote) {
+      for (const [kind, v] of [["takeProfit", Number(tp)], ["stopLoss", Number(sl)]] as const) {
+        if (v > 0) {
+          await placePerpOrder(wallet, symbol, side, kind, v)
+            .then(() => push({ kind: "ok", title: `${kind === "takeProfit" ? "Take-profit" : "Stop-loss"} set at ${fmtUsd(v)}` }))
+            .catch((e) => push({ kind: "err", title: "TP/SL failed", body: (e as Error).message.slice(0, 120) }));
+        }
+      }
+      if (insure && insurance.quote && type === "market") {
         try {
           const s2 = await buyTicket(wallet, insurance.market!, new PublicKey(ORACLES![symbol].pythAccount), new PublicKey(ORACLES![symbol].sbQuote), {
             kind: side === "long" ? "down" : "up",
@@ -164,6 +188,20 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
 
   return (
     <div className="panel space-y-4 p-4">
+      <div className="flex gap-4 border-b hairline pb-2 text-[13px]">
+        {(["market", "limit"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => {
+              setType(t);
+              if (t === "limit" && !limitPx && live) setLimitPx((side === "long" ? live * 0.99 : live * 1.01).toFixed(2));
+            }}
+            className={`pb-1 capitalize transition ${type === t ? "border-b-2 border-flame text-paper" : "text-muted hover:text-paper"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
       <Segmented
         layoutId="perp-side"
         value={side}
@@ -173,6 +211,7 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
           { value: "short", label: "Short", activeClass: "text-no" },
         ]}
       />
+      {type === "limit" && <AmountInput label={`Limit price (${side === "long" ? "fills at or below" : "fills at or above"})`} suffix="USD" value={limitPx} onChange={setLimitPx} />}
       <AmountInput label="Collateral" value={collateral} onChange={setCollateral} max={credit} />
       <div>
         <div className="mb-2 flex items-baseline justify-between">
@@ -198,13 +237,27 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
       </div>
       <div className="rounded-xl bg-ink px-3.5 py-2.5">
         <Row k="Position size" v={size ? `$${fmtNum(size)}` : "—"} />
-        <Row k="Entry (oracle)" v={price ? fmtUsd(price) : "—"} />
+        <Row k={type === "limit" ? "Entry (limit)" : "Entry (oracle)"} v={price ? fmtUsd(price) : "—"} />
         <Row k="Liquidation price" v={liq ? fmtUsd(liq) : "—"} cls="text-flame-2" />
         <Row k="Open fee" v={`$${fmtNum(openFee, 3)}`} />
         <Row k="Borrow" v={m ? `${(m.borrowPpmPerHour / 10_000).toFixed(3)}% / h` : "—"} />
       </div>
 
-      <button
+      {type === "market" && (
+        <div>
+          <button onClick={() => setShowTpsl(!showTpsl)} className="text-[12px] text-muted hover:text-paper">
+            {showTpsl ? "−" : "+"} Take-profit / stop-loss
+          </button>
+          {showTpsl && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <AmountInput label="Take-profit" suffix="USD" value={tp} onChange={setTp} />
+              <AmountInput label="Stop-loss" suffix="USD" value={sl} onChange={setSl} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {type === "market" && <button
         onClick={() => setInsure(!insure)}
         className={`w-full rounded-xl border p-3.5 text-left transition ${insure ? "border-flame/50 bg-flame/5" : "hairline"}`}
       >
@@ -219,12 +272,12 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
             ? `A touch ticket at your liquidation price: pay $${fmtNum(insurance.quote.stake)}, get $${fmtNum(insurance.quote.payout)} back if it's hit (covers ${countdown(insurance.left)}).`
             : insurance.reason}
         </p>
-      </button>
+      </button>}
 
       <Button
         tone={side === "long" ? "yes" : "no"}
         busy={busy}
-        disabled={!wallet || !m || !price || col < 1 || col > credit || reserve > capacity}
+        disabled={!wallet || !m || !price || col < 1 || col > credit || reserve > capacity || (type === "limit" && !(limitValue > 0))}
         onClick={submit}
       >
         {!wallet
@@ -233,7 +286,9 @@ function OrderPanel({ symbol, perps, refresh }: { symbol: AssetSymbol; perps: Pe
             ? "Deposit USDC below first"
             : reserve > capacity
               ? "Exceeds pool capacity"
-              : `${side === "long" ? "Long" : "Short"} ${symbol} ${lev.toFixed(1)}×${insure && insurance.quote ? " + insure" : ""}`}
+              : type === "limit"
+                ? `Place limit ${side} at ${limitValue ? fmtUsd(limitValue) : "…"}`
+                : `${side === "long" ? "Long" : "Short"} ${symbol} ${lev.toFixed(1)}×${insure && insurance.quote ? " + insure" : ""}`}
       </Button>
       <p className="flex items-center gap-2 text-[11px] text-muted">
         <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-yes" /> Executes on MagicBlock in ~1s. Liquidation needs Pyth
@@ -304,13 +359,13 @@ function Positions({ perps, refresh }: { perps: Perps; refresh: () => void }) {
                     {...r}
                     m={perps!.markets[r.s]!.data}
                     busy={busy === `${r.s}${r.side}`}
-                    onClose={async (mark) => {
+                    onClose={async (mark, fraction) => {
                       if (!wallet) return;
                       setBusy(`${r.s}${r.side}`);
                       try {
                         const limit = r.side === "long" ? mark * (1 - SLIPPAGE) : mark * (1 + SLIPPAGE);
-                        const sig = await closePerp(wallet, r.s, r.side, limit);
-                        push({ kind: "ok", title: `Closed ${r.s} ${r.side}`, sig, er: true });
+                        const sig = await closePerp(wallet, r.s, r.side, limit, fraction);
+                        push({ kind: "ok", title: `Closed ${Math.round(fraction * 100)}% of ${r.s} ${r.side}`, sig, er: true });
                         refresh();
                       } catch (e) {
                         push({ kind: "err", title: "Close failed", body: (e as Error).message.slice(0, 160) });
@@ -342,8 +397,11 @@ function PositionRow({
   slot: NonNullable<NonNullable<Perps>["account"]>["data"]["slots"][number];
   m: NonNullable<NonNullable<Perps>["markets"][AssetSymbol]>["data"];
   busy: boolean;
-  onClose: (mark: number) => void;
+  onClose: (mark: number, fraction: number) => void;
 }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const [margin, setMargin] = useState<string | null>(null);
   const t = useLivePrice(s);
   const size = slot.size.toNumber() / 1e6;
   const col = slot.collateral.toNumber() / 1e6;
@@ -370,16 +428,110 @@ function PositionRow({
       <td>
         <HiddenStop s={s} side={side} mark={mark} liq={liq} />
       </td>
-      <td className="text-right">
-        <button
-          disabled={busy}
-          onClick={() => onClose(mark)}
-          className="rounded-full border hairline px-3 py-1 text-[12px] hover:border-line-2 disabled:opacity-40"
-        >
-          {busy ? "…" : "Close"}
-        </button>
+      <td className="text-right whitespace-nowrap">
+        {margin !== null ? (
+          <span className="inline-flex items-center gap-1">
+            <input
+              autoFocus
+              value={margin}
+              onChange={(e) => setMargin(e.target.value.replace(/[^0-9.]/g, ""))}
+              placeholder="USDC"
+              className="num h-7 w-16 rounded-md border hairline bg-ink px-2 text-[12px] outline-none"
+            />
+            {([true, false] as const).map((add) => (
+              <button
+                key={String(add)}
+                disabled={!Number(margin)}
+                onClick={async () => {
+                  try {
+                    const sig = await adjustMargin(wallet!, s, side, add, Number(margin));
+                    push({ kind: "ok", title: `${add ? "Added" : "Removed"} $${margin} margin`, sig, er: true });
+                    setMargin(null);
+                  } catch (e) {
+                    push({ kind: "err", title: "Margin change failed", body: (e as Error).message.slice(0, 120) });
+                  }
+                }}
+                className="rounded-md border hairline px-2 py-1 text-[11px] hover:border-line-2 disabled:opacity-40"
+              >
+                {add ? "+" : "−"}
+              </button>
+            ))}
+            <button onClick={() => setMargin(null)} className="px-1 text-[11px] text-muted">
+              ×
+            </button>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1">
+            <button onClick={() => setMargin("")} className="rounded-md px-2 py-1 text-[11px] text-muted hover:text-paper" title="Add or remove margin">
+              ±$
+            </button>
+            {[0.25, 0.5].map((f) => (
+              <button
+                key={f}
+                disabled={busy}
+                onClick={() => onClose(mark, f)}
+                className="rounded-md px-1.5 py-1 text-[11px] text-muted hover:text-paper disabled:opacity-40"
+              >
+                {f * 100}%
+              </button>
+            ))}
+            <button
+              disabled={busy}
+              onClick={() => onClose(mark, 1)}
+              className="rounded-full border hairline px-3 py-1 text-[12px] hover:border-line-2 disabled:opacity-40"
+            >
+              {busy ? "…" : "Close"}
+            </button>
+          </span>
+        )}
       </td>
     </motion.tr>
+  );
+}
+
+function OpenOrders({ perps, refresh }: { perps: Perps; refresh: () => void }) {
+  const wallet = useAnchorWallet();
+  const { push } = useToast();
+  const book = perps?.orders?.data;
+  const rows = (book?.orders ?? []).map((o, i) => ({ o, i })).filter(({ o }) => !("none" in (o.kind as object)));
+  if (!wallet || !rows.length) return null;
+  const label = { limitOpen: "Limit open", takeProfit: "Take-profit", stopLoss: "Stop-loss" } as Record<string, string>;
+  return (
+    <div className="panel p-5">
+      <h3 className="font-display text-[24px] tracking-tight">Open orders</h3>
+      <div className="mt-2 divide-y divide-line">
+        {rows.map(({ o, i }) => {
+          const kind = Object.keys(o.kind)[0];
+          return (
+            <div key={i} className="flex items-center gap-4 py-3 text-[13px]">
+              <span className="w-24 text-muted">{label[kind]}</span>
+              <span className={o.isLong ? "text-yes" : "text-no"}>{o.isLong ? "Long" : "Short"}</span>
+              <span>{PERP_SYMBOLS[o.marketIndex]}-PERP</span>
+              <span className="num">@ {fmtUsd(o.trigger.toNumber() / 1e8)}</span>
+              {kind === "limitOpen" && (
+                <span className="num text-muted">
+                  ${fmtNum(o.collateral.toNumber() / 1e6)} × {(o.leverageX10 / 10).toFixed(1)}
+                </span>
+              )}
+              <button
+                onClick={async () => {
+                  try {
+                    const sig = await cancelPerpOrder(wallet, i);
+                    push({ kind: "ok", title: "Order cancelled", sig, er: true });
+                    refresh();
+                  } catch (e) {
+                    push({ kind: "err", title: "Cancel failed", body: (e as Error).message.slice(0, 120) });
+                  }
+                }}
+                className="ml-auto text-[12px] text-muted hover:text-paper"
+              >
+                Cancel
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

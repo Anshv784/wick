@@ -3,7 +3,9 @@
 import { useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useMemo, useState } from "react";
-import { claimPosition, fundPosition, trade } from "@/lib/actions";
+import { cancelPoolOrder, claimPosition, fundPosition, placePoolOrder, poolOrdersPda, trade } from "@/lib/actions";
+import { erConn, marketsProgram } from "@/lib/wick";
+import { usePoll } from "@/lib/hooks";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { usePosition, useUsdc } from "@/lib/hooks";
 import { fpmmBuy, fpmmSell, yesBps } from "@/lib/pricing";
@@ -21,6 +23,14 @@ export function InstantPanel({ k, m, refresh }: { k: PublicKey; m: Located<Marke
   const usdc = useUsdc();
   const [side, setSide] = useState<"yes" | "no">("yes");
   const [mode, setMode] = useState<"buy" | "sell">("buy");
+  const [kind, setKind] = useState<"market" | "limit">("market");
+  const [limitCents, setLimitCents] = useState("");
+  const orders = usePoll(
+    async () =>
+      wallet ? marketsProgram(erConn).account.poolOrders.fetchNullable(poolOrdersPda(k, wallet.publicKey)).catch(() => null) : null,
+    4000,
+    [k.toBase58(), wallet?.publicKey.toBase58()],
+  );
   const [amt, setAmt] = useState("");
   const [fund, setFund] = useState("");
   const [busy, setBusy] = useState<string>();
@@ -112,6 +122,20 @@ export function InstantPanel({ k, m, refresh }: { k: PublicKey; m: Located<Marke
         })}
       </div>
 
+      <div className="flex gap-4 border-b hairline pb-2 text-[13px]">
+        {(["market", "limit"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => {
+              setKind(t);
+              if (t === "limit" && !limitCents) setLimitCents(String(Math.max(1, Math.round((side === "yes" ? yes : 10_000 - yes) / 100) - (mode === "buy" ? 5 : -5))));
+            }}
+            className={`pb-1 capitalize transition ${kind === t ? "border-b-2 border-flame text-paper" : "text-muted hover:text-paper"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
       <Segmented
         layoutId="instant-mode"
         value={mode}
@@ -148,29 +172,85 @@ export function InstantPanel({ k, m, refresh }: { k: PublicKey; m: Located<Marke
             onChange={setAmt}
             max={mode === "buy" ? balance : held}
           />
-          <div className="rounded-xl bg-ink px-3.5 py-2.5">
+          {kind === "limit" && (
+            <AmountInput
+              label={`Limit price (${mode === "buy" ? "fills at or below" : "fills at or above"})`}
+              suffix="¢"
+              value={limitCents}
+              onChange={setLimitCents}
+            />
+          )}
+          {kind === "market" && <div className="rounded-xl bg-ink px-3.5 py-2.5">
             <Row k={mode === "buy" ? "Shares out" : "USDC out"} v={preview ? fmtNum(preview.out / 1e6) : "—"} />
             <Row k="Avg price" v={preview ? `${(preview.avg * 100).toFixed(1)}¢` : "—"} />
             <Row k="YES after" v={preview ? fmtPct(preview.newYes) : fmtPct(yes)} />
             {mode === "buy" && (
               <Row k="Pays if right" v={preview ? `$${fmtNum(preview.payout)}` : "—"} cls="text-yes" />
             )}
-          </div>
-          <Button
-            tone={side === "yes" ? "yes" : "no"}
-            busy={busy === "Trade"}
-            disabled={!preview || !tradable}
-            onClick={() =>
-              run(
-                "Trade",
-                () =>
-                  trade(wallet, k, m.onEr, mode, side, Math.round(Number(amt) * 1e6), Math.floor(preview!.out * (1 - SLIPPAGE))),
-                m.onEr,
-              )
-            }
-          >
-            {mode === "buy" ? "Buy" : "Sell"} {side.toUpperCase()}
-          </Button>
+          </div>}
+          {kind === "limit" ? (
+            <Button
+              tone={side === "yes" ? "yes" : "no"}
+              busy={busy === "Limit order"}
+              disabled={!Number(amt) || !(Number(limitCents) > 0 && Number(limitCents) < 100) || !tradable || !m.onEr}
+              onClick={() =>
+                run(
+                  "Limit order",
+                  async () => {
+                    const sig = await placePoolOrder(wallet, k, side, mode === "buy", Math.round(Number(amt) * 1e6), Number(limitCents));
+                    orders.refresh();
+                    return sig;
+                  },
+                  true,
+                )
+              }
+            >
+              {mode === "buy" ? "Buy" : "Sell"} {side.toUpperCase()} at {limitCents || "…"}¢
+            </Button>
+          ) : (
+            <Button
+              tone={side === "yes" ? "yes" : "no"}
+              busy={busy === "Trade"}
+              disabled={!preview || !tradable}
+              onClick={() =>
+                run(
+                  "Trade",
+                  () =>
+                    trade(wallet, k, m.onEr, mode, side, Math.round(Number(amt) * 1e6), Math.floor(preview!.out * (1 - SLIPPAGE))),
+                  m.onEr,
+                )
+              }
+            >
+              {mode === "buy" ? "Buy" : "Sell"} {side.toUpperCase()}
+            </Button>
+          )}
+          {(orders.data?.orders ?? []).some((o) => o.active) && (
+            <div className="rounded-xl border hairline p-3">
+              <div className="mb-1 text-[11px] tracking-wide text-muted uppercase">Open limit orders</div>
+              {orders.data!.orders.map((o, i) =>
+                o.active ? (
+                  <div key={i} className="flex items-center justify-between py-1 text-[12px]">
+                    <span className="num">
+                      {o.isBuy ? "Buy" : "Sell"} <span className={o.isYes ? "text-yes" : "text-no"}>{o.isYes ? "YES" : "NO"}</span>{" "}
+                      {o.isBuy ? `$${fmtNum(o.amount.toNumber() / 1e6)}` : `${fmtNum(o.amount.toNumber() / 1e6)} sh`} @ {(o.limitBps / 100).toFixed(0)}¢
+                    </span>
+                    <button
+                      className="text-muted hover:text-paper"
+                      onClick={() =>
+                        run("Cancel order", async () => {
+                          const sig = await cancelPoolOrder(wallet, k, i);
+                          orders.refresh();
+                          return sig;
+                        }, true)
+                      }
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between text-[11px] text-muted">
             <span className="num">
               credit ${fmtNum(balance)} · {fmtNum(p!.yes.toNumber() / 1e6)} YES · {fmtNum(p!.no.toNumber() / 1e6)} NO

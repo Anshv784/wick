@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { InstantPanel } from "@/components/InstantPanel";
+import { MarketActivity } from "@/components/MarketActivity";
 import { marketQuestion } from "@/components/MarketCard";
 import { ChartLine, PriceChart } from "@/components/PriceChart";
 import { SealedPanel } from "@/components/SealedPanel";
@@ -92,6 +93,7 @@ export default function MarketPage() {
           <div className="panel overflow-hidden p-2 pt-4">
             <PriceChart symbol={q.asset.symbol} lines={lines} />
           </div>
+          <MarketActivity market={key} currentYesBps={yes} />
           <div className="grid gap-5 md:grid-cols-2">
             <SettlementProof m={m.data} />
             <div className="panel p-5">

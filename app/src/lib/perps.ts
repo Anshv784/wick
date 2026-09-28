@@ -4,6 +4,7 @@ import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import deployment from "@/deployment.json";
 import { ASSETS, AssetSymbol } from "./assets";
 import { ata, baseConn, DELEGATION_PROGRAM, erConn, marketsProgram, MARKETS_ID, ORACLES, sendTx } from "./wick";
+import { sendEr, sessionSetupIxs } from "./session";
 
 export type Side = "long" | "short";
 export const PERP_SYMBOLS = Object.keys(ASSETS) as AssetSymbol[];
@@ -17,6 +18,7 @@ export const perpPdas = {
   vault: () => pda([Buffer.from("perp_vault")]),
   market: (s: AssetSymbol) => pda([Buffer.from("perp_market"), sym(s)]),
   account: (owner: PublicKey) => pda([Buffer.from("perp_account"), owner.toBuffer()]),
+  orders: (owner: PublicKey) => pda([Buffer.from("perp_orders"), owner.toBuffer()]),
 };
 
 export const PERPS_LIVE = !!(deployment as unknown as { perps?: object }).perps;
@@ -25,6 +27,7 @@ type Program = ReturnType<typeof marketsProgram>;
 export type PerpPoolAcc = Awaited<ReturnType<Program["account"]["perpPool"]["fetch"]>>;
 export type PerpMarketAcc = Awaited<ReturnType<Program["account"]["perpMarket"]["fetch"]>>;
 export type PerpAccountAcc = Awaited<ReturnType<Program["account"]["perpAccount"]["fetch"]>>;
+export type PerpOrdersAcc = Awaited<ReturnType<Program["account"]["perpOrders"]["fetch"]>>;
 
 async function isDelegated(k: PublicKey) {
   const info = await baseConn.getAccountInfo(k);
@@ -33,7 +36,11 @@ async function isDelegated(k: PublicKey) {
 
 /** Reads perp state (pool, markets, trader account) from the ER when delegated, else base. */
 export async function fetchPerps(owner?: PublicKey) {
-  const keys = [perpPdas.pool(), ...PERP_SYMBOLS.map(perpPdas.market), ...(owner ? [perpPdas.account(owner)] : [])];
+  const keys = [
+    perpPdas.pool(),
+    ...PERP_SYMBOLS.map(perpPdas.market),
+    ...(owner ? [perpPdas.account(owner), perpPdas.orders(owner)] : []),
+  ];
   const base = await baseConn.getMultipleAccountsInfo(keys);
   const erKeys = keys.filter((_, i) => base[i]?.owner.equals(DELEGATION_PROGRAM));
   const er = erKeys.length ? await erConn.getMultipleAccountsInfo(erKeys) : [];
@@ -49,8 +56,9 @@ export async function fetchPerps(owner?: PublicKey) {
   const markets = Object.fromEntries(
     PERP_SYMBOLS.map((s, j) => [s, read(1 + j, "perpMarket") as { data: PerpMarketAcc; onEr: boolean } | null]),
   ) as Record<AssetSymbol, { data: PerpMarketAcc; onEr: boolean } | null>;
-  const account = owner ? (read(keys.length - 1, "perpAccount") as { data: PerpAccountAcc; onEr: boolean } | null) : null;
-  return { pool, markets, account };
+  const account = owner ? (read(keys.length - 2, "perpAccount") as { data: PerpAccountAcc; onEr: boolean } | null) : null;
+  const orders = owner ? (read(keys.length - 1, "perpOrders") as { data: PerpOrdersAcc; onEr: boolean } | null) : null;
+  return { pool, markets, account, orders };
 }
 
 // ---------------------------------------------------------------- math (mirrors programs/wick_markets/src/perps.rs)
@@ -106,13 +114,22 @@ export async function depositPerp(wallet: AnchorWallet, usdc: number) {
   if (!(await baseConn.getAccountInfo(account))) {
     ixs.push(await program.methods.openPerpAccount().accountsPartial({ owner: wallet.publicKey }).instruction());
   }
+  const orders = perpPdas.orders(wallet.publicKey);
+  const ordersInfo = await baseConn.getAccountInfo(orders);
+  if (!ordersInfo) {
+    ixs.push(await program.methods.openPerpOrders().accountsPartial({ owner: wallet.publicKey }).instruction());
+  }
   ixs.push(
     await program.methods
       .perpDeposit(new BN(Math.round(usdc * USDC)))
       .accountsPartial({ owner: wallet.publicKey, account, ownerToken: ata(wallet.publicKey) })
       .instruction(),
+    ...(await sessionSetupIxs(wallet)),
     await program.methods.delegatePerpAccount().accountsPartial({ payer: wallet.publicKey }).instruction(),
   );
+  if (!ordersInfo?.owner.equals(DELEGATION_PROGRAM)) {
+    ixs.push(await program.methods.delegatePerpOrders().accountsPartial({ payer: wallet.publicKey }).instruction());
+  }
   return sendTx(baseConn, wallet, ixs);
 }
 
@@ -130,46 +147,97 @@ export async function withdrawPerp(wallet: AnchorWallet, usdc: number) {
   ]);
 }
 
-function tradeAccounts(wallet: AnchorWallet, s: AssetSymbol) {
+const er = () => marketsProgram(erConn);
+
+function tradeAccounts(owner: PublicKey, s: AssetSymbol, signer: PublicKey, session: PublicKey | null) {
   return {
-    owner: wallet.publicKey,
+    signer,
     pool: perpPdas.pool(),
     market: perpPdas.market(s),
-    account: perpPdas.account(wallet.publicKey),
+    account: perpPdas.account(owner),
     priceUpdate: new PublicKey(ORACLES![s].pythAccount),
+    session,
   };
 }
 
 const sideArg = (s: Side) => (s === "long" ? { long: {} } : { short: {} });
 
-export async function openPerp(wallet: AnchorWallet, s: AssetSymbol, side: Side, collateral: number, leverage: number, limitPrice: number) {
-  const ix = await marketsProgram(erConn, wallet)
-    .methods.openPerp(sideArg(side), new BN(Math.round(collateral * USDC)), Math.round(leverage * 10), new BN(Math.round(limitPrice * 1e8)))
-    .accountsPartial(tradeAccounts(wallet, s))
-    .instruction();
-  return sendTx(erConn, wallet, [ix]);
+export function openPerp(wallet: AnchorWallet, s: AssetSymbol, side: Side, collateral: number, leverage: number, limitPrice: number) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.openPerp(sideArg(side), new BN(Math.round(collateral * USDC)), Math.round(leverage * 10), new BN(Math.round(limitPrice * 1e8)))
+      .accountsPartial(tradeAccounts(wallet.publicKey, s, signer, session))
+      .instruction(),
+  );
 }
 
-export async function closePerp(wallet: AnchorWallet, s: AssetSymbol, side: Side, limitPrice: number) {
-  const ix = await marketsProgram(erConn, wallet)
-    .methods.closePerp(sideArg(side), new BN(Math.round(limitPrice * 1e8)))
-    .accountsPartial(tradeAccounts(wallet, s))
-    .instruction();
-  return sendTx(erConn, wallet, [ix]);
+export function closePerp(wallet: AnchorWallet, s: AssetSymbol, side: Side, limitPrice: number, fraction = 1) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.closePerp(sideArg(side), new BN(Math.round(limitPrice * 1e8)), Math.round(fraction * 10_000))
+      .accountsPartial(tradeAccounts(wallet.publicKey, s, signer, session))
+      .instruction(),
+  );
 }
 
-export async function lpDeposit(wallet: AnchorWallet, usdc: number) {
-  const ix = await marketsProgram(erConn, wallet)
-    .methods.lpDeposit(new BN(Math.round(usdc * USDC)))
-    .accountsPartial({ owner: wallet.publicKey, pool: perpPdas.pool(), account: perpPdas.account(wallet.publicKey) })
-    .instruction();
-  return sendTx(erConn, wallet, [ix]);
+export function adjustMargin(wallet: AnchorWallet, s: AssetSymbol, side: Side, add: boolean, usdc: number) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.adjustMargin(sideArg(side), add, new BN(Math.round(usdc * USDC)))
+      .accountsPartial(tradeAccounts(wallet.publicKey, s, signer, session))
+      .instruction(),
+  );
 }
 
-export async function lpWithdraw(wallet: AnchorWallet, shares: BN) {
-  const ix = await marketsProgram(erConn, wallet)
-    .methods.lpWithdraw(shares)
-    .accountsPartial({ owner: wallet.publicKey, pool: perpPdas.pool(), account: perpPdas.account(wallet.publicKey) })
-    .instruction();
-  return sendTx(erConn, wallet, [ix]);
+export type OrderKind = "limitOpen" | "takeProfit" | "stopLoss";
+
+export function placePerpOrder(
+  wallet: AnchorWallet,
+  s: AssetSymbol,
+  side: Side,
+  kind: OrderKind,
+  trigger: number,
+  collateral = 0,
+  leverage = 0,
+) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.placePerpOrder(
+        { [kind]: {} } as never,
+        PERP_SYMBOLS.indexOf(s),
+        side === "long",
+        new BN(Math.round(trigger * 1e8)),
+        new BN(Math.round(collateral * USDC)),
+        Math.round(leverage * 10),
+      )
+      .accountsPartial({ signer, account: perpPdas.account(wallet.publicKey), orders: perpPdas.orders(wallet.publicKey), session })
+      .instruction(),
+  );
+}
+
+export function cancelPerpOrder(wallet: AnchorWallet, index: number) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.cancelPerpOrder(index)
+      .accountsPartial({ signer, account: perpPdas.account(wallet.publicKey), orders: perpPdas.orders(wallet.publicKey), session })
+      .instruction(),
+  );
+}
+
+export function lpDeposit(wallet: AnchorWallet, usdc: number) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.lpDeposit(new BN(Math.round(usdc * USDC)))
+      .accountsPartial({ signer, pool: perpPdas.pool(), account: perpPdas.account(wallet.publicKey), session })
+      .instruction(),
+  );
+}
+
+export function lpWithdraw(wallet: AnchorWallet, shares: BN) {
+  return sendEr(wallet, (signer, session) =>
+    er()
+      .methods.lpWithdraw(shares)
+      .accountsPartial({ signer, pool: perpPdas.pool(), account: perpPdas.account(wallet.publicKey), session })
+      .instruction(),
+  );
 }

@@ -20,21 +20,7 @@ export default function Portfolio() {
   const tickets = useTickets();
   const positions = usePoll(
     async () => {
-      const perps = usePoll(() => fetchPerps(wallet?.publicKey), 4000, [wallet?.publicKey.toBase58()]);
-  const sealedOrders = usePoll(
-    async () => {
       if (!wallet) return [];
-      const rows = await sealedProgram(baseConn).account.sealedOrder.all([
-        { dataSize: sealedProgram(baseConn).account.sealedOrder.size },
-        { memcmp: { offset: 8 + 64 + 16 + 32, bytes: wallet.publicKey.toBase58() } },
-      ]);
-      return rows;
-    },
-    8000,
-    [wallet?.publicKey.toBase58()],
-  );
-
-  if (!wallet) return [];
       const keys = await discoverMarketKeys();
       const rows = await Promise.all(
         keys.map(async (k) => ({ k, p: await fetchPosition(pdas.position(k, wallet.publicKey)).catch(() => null) })),

@@ -22,9 +22,12 @@ Long or short **SOL, BTC and ETH up to 50×**, executed on a MagicBlock rollup i
 | 🔥 | **Liquidation insurance** | One click buys a touch ticket at your liquidation price, sized to repay your collateral if it's ever hit |
 | 🔒 | **Hidden stop-losses** | Your stop is encrypted to Arcium; MPC compares it with the on-chain Pyth mark and reveals only "crossed or not" |
 | 🏦 | **LP pool** | Earns fees, borrow and trader losses; each position's max profit is reserved at open so the pool never over-promises |
+| 🎯 | **Limit, TP & SL orders** | Limit opens escrow collateral; the keeper fills any order once the pinned Pyth price crosses its trigger |
+| ✂️ | **Partial close & margin** | Close 25/50/100% of a leg, or add/remove margin (bounded by max leverage and maintenance) |
+| ⚡ | **One-click trading** | A 24h session key signs rollup trades: no wallet popup per trade, and no wallet simulation warnings |
 
 ### Prediction markets
-Every market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* You can take that view three ways:
+Every market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* You can take that view three ways, with market or **limit orders**, a live probability chart and a trade feed:
 
 | | Mode | What you're betting on | Runs on |
 |---|---|---|---|
@@ -185,6 +188,8 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 | Near-certain touch tickets | Quotes above 95% are refused, not clamped |
 | "↑ before ↓" order disputes | Its confirmations must use prints under 20s old, so the order of events is fixed in real time |
 | Stuck MPC computations | Order payouts, batch reveals and inits can all be re-queued after a timeout |
+| A stolen session key | It can only trade inside the owner's accounts on the rollup (never withdraw), and expires within 24h |
+| Limit orders walking the pool | Prediction limit fills are checked on the average fill price, not the starting price |
 
 > These are unaudited devnet contracts using a test USDC mint.
 
@@ -193,6 +198,7 @@ Orders stay sealed for the whole life of the market. Only the batch totals are r
 A full lifecycle ran against devnet with scripted users:
 
 - **Perps:** a 20× long SOL ($1,000 size) opened on MagicBlock in ~1s at $119.84 with a $114.59 liquidation price, then closed in 1.4s. The pool's liquidity, reserve and fees reconciled exactly.
+- **One-click + orders:** a zero-SOL session key opened, half-closed and re-margined a position; the keeper filled a take-profit (19s), a limit long (13s) and a prediction limit buy (10s).
 - **Hidden stop:** an encrypted stop on a 20× long fired after one Arcium check and the keeper closed the position on MagicBlock 19s after the stop was armed; the stop price never appeared on-chain.
 
 - **Instant:** deposit, delegate, then buy and sell on MagicBlock in about 1 second each.

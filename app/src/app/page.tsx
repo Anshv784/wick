@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { ReactNode, useEffect, useState } from "react";
+import { Architecture } from "@/components/Architecture";
 import { Logo } from "@/components/Logo";
 import { marketQuestion } from "@/components/MarketCard";
 import { ASSETS, AssetSymbol } from "@/lib/assets";
@@ -31,6 +32,7 @@ export default function Landing() {
       <Perps />
       <Modes />
       <LiveStrip />
+      <HowItWorks />
       <Settlement />
       <Stack />
       <FinalCta />
@@ -67,6 +69,7 @@ function Hero() {
         <nav className="hidden items-center gap-6 text-[13px] text-muted md:flex">
           <a href="#perps" className="hover:text-paper">Perps</a>
           <a href="#modes" className="hover:text-paper">Prediction markets</a>
+          <a href="#architecture" className="hover:text-paper">How it works</a>
           <a href="#settlement" className="hover:text-paper">Why Wick</a>
           <Link href="/docs" className="hover:text-paper">Docs</Link>
         </nav>
@@ -418,6 +421,26 @@ function MiniMarket({ r, i }: { r: NonNullable<ReturnType<typeof useMarkets>["da
         </div>
       </Link>
     </motion.div>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section id="architecture" className="mx-auto max-w-[1280px] scroll-mt-10 px-4 pt-28 sm:px-6">
+      <motion.div {...fade} className="mb-10">
+        <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Under the hood</p>
+        <h2 className="font-display mt-3 max-w-2xl text-[48px] leading-[1] tracking-tight sm:text-[60px]">
+          How a trade <em className="text-muted">moves</em>.
+        </h2>
+        <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-muted">
+          Trades run on a MagicBlock rollup, money lives on Solana, two oracles decide every outcome, and Arcium keeps the private
+          parts private. Pick a flow to follow it.
+        </p>
+      </motion.div>
+      <motion.div {...fade}>
+        <Architecture />
+      </motion.div>
+    </section>
   );
 }
 

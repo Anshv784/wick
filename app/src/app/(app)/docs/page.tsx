@@ -1,9 +1,10 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import { Architecture } from "@/components/Architecture";
 import { Mermaid } from "@/components/Mermaid";
 import deployment from "@/deployment.json";
-import { ARCHITECTURE, INSTANT, LIFECYCLE, LIQUIDATION, PERPS, SEALED, SETTLEMENT, TOUCH } from "@/lib/diagrams";
+import { INSTANT, LIFECYCLE, LIQUIDATION, PERPS, SEALED, SETTLEMENT, TOUCH } from "@/lib/diagrams";
 
 const SECTIONS = [
   ["overview", "Overview"],
@@ -76,7 +77,7 @@ export default function Docs() {
             <Code>wick_markets</Code>. Markets and positions are delegated to MagicBlock while trading, then committed back to
             Solana to settle.
           </P>
-          <Mermaid chart={ARCHITECTURE} />
+          <Architecture />
         </Section>
 
         <Section id="perps" kicker="Wick-proof perps" title="Perpetuals">

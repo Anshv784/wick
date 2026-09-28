@@ -6,7 +6,8 @@
     "status": "tsx scripts/status.ts",
     "e2e": "tsx scripts/e2e.ts",
     "typecheck": "tsc -p .",
-    "postinstall": "node -e \"require('fs').rmSync('node_modules/jito-ts/node_modules/@solana/web3.js',{recursive:true,force:true})\""
+    "postinstall": "node -e \"require('fs').rmSync('node_modules/jito-ts/node_modules/@solana/web3.js',{recursive:true,force:true})\"",
+    "perps-setup": "tsx scripts/perps-setup.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.0.2",

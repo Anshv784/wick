@@ -178,6 +178,38 @@ async function settleMarkets() {
   }
 }
 
+const SIDES = [{ long: {} }, { short: {} }] as const;
+
+/**
+ * Perp liquidations on the ER. The program only liquidates when BOTH oracles put the position
+ * under maintenance, so each candidate is simulated first and sent only if that check passes.
+ */
+async function liquidatePerps() {
+  const accounts = await marketsEr.account.perpAccount.all([{ dataSize: marketsEr.account.perpAccount.size }]);
+  for (const { publicKey: account, account: a } of accounts) {
+    for (const [i, slot] of a.slots.entries()) {
+      if (slot.size.isZero()) continue;
+      const asset = ASSETS[Math.floor(i / 2)];
+      if (!asset) continue;
+      const market = PublicKey.findProgramAddressSync(
+        [Buffer.from("perp_market"), Buffer.concat([Buffer.from(asset.symbol), Buffer.alloc(16)]).subarray(0, 16)],
+        markets.programId,
+      )[0];
+      const ix = await marketsEr.methods
+        .liquidatePerp(SIDES[i % 2])
+        .accountsPartial({
+          keeper: admin.publicKey,
+          market,
+          account,
+          priceUpdate: new PublicKey(d.oracles[asset.symbol].pythAccount),
+          sbFeed: new PublicKey(d.oracles[asset.symbol].sbQuote),
+        })
+        .instruction();
+      await trySend([ix], `liquidated ${asset.symbol} ${i % 2 ? "short" : "long"} of ${a.owner.toBase58().slice(0, 6)}`, erConn);
+    }
+  }
+}
+
 const REQUEUE_MS = 180_000;
 const queuedAt = new Map<string, number>();
 
@@ -299,6 +331,7 @@ async function main() {
       ["touch", confirmTouches],
       ["settle", settleMarkets],
       ["sealed", crankSealed],
+      ["perps", liquidatePerps],
     ];
     // Market roll-over and house top-up are slow checks; run them every ~5 minutes.
     if (tick % 40 === 1) jobs.push(["roll", rollMarkets], ["topup", topUpHouse]);

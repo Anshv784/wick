@@ -387,6 +387,75 @@ export type WickMarkets = {
       "args": []
     },
     {
+      "name": "closePerp",
+      "discriminator": [
+        195,
+        141,
+        61,
+        39,
+        139,
+        229,
+        112,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "priceUpdate"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "perpSide"
+            }
+          }
+        },
+        {
+          "name": "limitPrice",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "confirmTouch",
       "discriminator": [
         254,
@@ -816,6 +885,587 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "delegatePerpAccount",
+      "discriminator": [
+        131,
+        189,
+        226,
+        18,
+        201,
+        183,
+        12,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataAccount",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "account"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "payer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegatePerpMarket",
+      "discriminator": [
+        196,
+        156,
+        119,
+        194,
+        79,
+        195,
+        164,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferMarket",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordMarket",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataMarket",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "symbol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "symbol",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "delegatePerpPool",
+      "discriminator": [
+        22,
+        159,
+        144,
+        121,
+        231,
+        42,
+        146,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferPool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                30,
+                64,
+                138,
+                25,
+                32,
+                247,
+                230,
+                227,
+                127,
+                236,
+                199,
+                140,
+                89,
+                77,
+                90,
+                233,
+                214,
+                215,
+                98,
+                215,
+                137,
+                18,
+                204,
+                188,
+                226,
+                21,
+                142,
+                170,
+                233,
+                200,
+                125,
+                94
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordPool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataPool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "336JyfBdwevzzuuQ5dy1LF5aQPatq947z6Td6111qxow"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegatePosition",
       "discriminator": [
         194,
@@ -1179,6 +1829,431 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "initPerpMarket",
+      "discriminator": [
+        150,
+        115,
+        81,
+        59,
+        24,
+        190,
+        25,
+        227
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool"
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "perpMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initPerpPool",
+      "discriminator": [
+        200,
+        177,
+        17,
+        77,
+        29,
+        123,
+        147,
+        110
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "liquidatePerp",
+      "discriminator": [
+        75,
+        35,
+        119,
+        247,
+        191,
+        18,
+        139,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "priceUpdate"
+        },
+        {
+          "name": "sbFeed"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "perpSide"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lpDeposit",
+      "discriminator": [
+        27,
+        77,
+        210,
+        69,
+        12,
+        43,
+        148,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "account",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "lpWithdraw",
+      "discriminator": [
+        205,
+        206,
+        130,
+        170,
+        173,
+        51,
+        11,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "account",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "openPerp",
+      "discriminator": [
+        12,
+        111,
+        61,
+        24,
+        137,
+        92,
+        68,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "priceUpdate"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "perpSide"
+            }
+          }
+        },
+        {
+          "name": "collateral",
+          "type": "u64"
+        },
+        {
+          "name": "leverageX10",
+          "type": "u16"
+        },
+        {
+          "name": "limitPrice",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "openPerpAccount",
+      "discriminator": [
+        233,
+        216,
+        61,
+        68,
+        92,
+        199,
+        46,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "openPosition",
       "discriminator": [
         135,
@@ -1234,6 +2309,174 @@ export type WickMarkets = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "perpDeposit",
+      "discriminator": [
+        92,
+        29,
+        29,
+        118,
+        205,
+        97,
+        81,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "perpWithdraw",
+      "discriminator": [
+        17,
+        19,
+        193,
+        239,
+        65,
+        17,
+        47,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "account"
+          ]
+        },
+        {
+          "name": "account",
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  112,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "processUndelegation",
@@ -1437,6 +2680,40 @@ export type WickMarkets = {
         },
         {
           "name": "market",
+          "writable": true
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegatePerpAccount",
+      "discriminator": [
+        25,
+        220,
+        244,
+        45,
+        242,
+        15,
+        211,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "account",
           "writable": true
         },
         {
@@ -1675,6 +2952,45 @@ export type WickMarkets = {
       ]
     },
     {
+      "name": "perpAccount",
+      "discriminator": [
+        25,
+        39,
+        251,
+        7,
+        185,
+        49,
+        161,
+        155
+      ]
+    },
+    {
+      "name": "perpMarket",
+      "discriminator": [
+        10,
+        223,
+        12,
+        44,
+        107,
+        245,
+        55,
+        247
+      ]
+    },
+    {
+      "name": "perpPool",
+      "discriminator": [
+        85,
+        217,
+        76,
+        137,
+        27,
+        61,
+        171,
+        33
+      ]
+    },
+    {
       "name": "position",
       "discriminator": [
         170,
@@ -1716,6 +3032,19 @@ export type WickMarkets = {
   ],
   "events": [
     {
+      "name": "liquidated",
+      "discriminator": [
+        231,
+        57,
+        55,
+        75,
+        0,
+        170,
+        246,
+        68
+      ]
+    },
+    {
       "name": "marketCreated",
       "discriminator": [
         88,
@@ -1739,6 +3068,19 @@ export type WickMarkets = {
         106,
         199,
         202
+      ]
+    },
+    {
+      "name": "perpTradeEvent",
+      "discriminator": [
+        18,
+        50,
+        60,
+        117,
+        63,
+        21,
+        149,
+        129
       ]
     },
     {
@@ -1971,6 +3313,46 @@ export type WickMarkets = {
             "docs": [
               "USDC the creator seeds into the pool; mints this many YES and NO shares."
             ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "liquidated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": {
+              "defined": {
+                "name": "perpSide"
+              }
+            }
+          },
+          {
+            "name": "size",
+            "type": "u64"
+          },
+          {
+            "name": "pyth",
+            "type": "i64"
+          },
+          {
+            "name": "switchboard",
+            "type": "i64"
+          },
+          {
+            "name": "refund",
             "type": "u64"
           }
         ]
@@ -2216,6 +3598,293 @@ export type WickMarkets = {
       }
     },
     {
+      "name": "perpAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "credit",
+            "docs": [
+              "Free USDC, usable as collateral or for LP deposits."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "lpShares",
+            "type": "u64"
+          },
+          {
+            "name": "slots",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "slot"
+                  }
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpMarket",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "docs": [
+              "Slot index base: this market uses slots index*2 (long) and index*2+1 (short)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "oracle",
+            "type": {
+              "defined": {
+                "name": "oracleSpec"
+              }
+            }
+          },
+          {
+            "name": "maxLeverage",
+            "type": "u16"
+          },
+          {
+            "name": "openFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "closeFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "maintBps",
+            "docs": [
+              "Maintenance margin, in bps of size."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "liqFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "borrowPpmPerHour",
+            "docs": [
+              "Borrow fee in parts-per-million of size per hour."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "maxOi",
+            "type": "u64"
+          },
+          {
+            "name": "longOi",
+            "type": "u64"
+          },
+          {
+            "name": "shortOi",
+            "type": "u64"
+          },
+          {
+            "name": "borrowIdx",
+            "type": "u128"
+          },
+          {
+            "name": "lastUpdate",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "type": "u8"
+          },
+          {
+            "name": "oracle",
+            "type": {
+              "defined": {
+                "name": "oracleSpec"
+              }
+            }
+          },
+          {
+            "name": "maxLeverage",
+            "type": "u16"
+          },
+          {
+            "name": "openFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "closeFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "maintBps",
+            "type": "u16"
+          },
+          {
+            "name": "liqFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "borrowPpmPerHour",
+            "type": "u32"
+          },
+          {
+            "name": "maxOi",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidity",
+            "docs": [
+              "LP-owned USDC (includes fees and trader losses, net of trader profits)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Max profit the pool has promised to open positions."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fees",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vaultBump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpSide",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "long"
+          },
+          {
+            "name": "short"
+          }
+        ]
+      }
+    },
+    {
+      "name": "perpTradeEvent",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": {
+              "defined": {
+                "name": "perpSide"
+              }
+            }
+          },
+          {
+            "name": "isOpen",
+            "type": "bool"
+          },
+          {
+            "name": "size",
+            "type": "u64"
+          },
+          {
+            "name": "price",
+            "type": "i64"
+          },
+          {
+            "name": "pnl",
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "position",
       "docs": [
         "A trader's pool account for one market. Holds internal USDC credit plus shares so",
@@ -2373,6 +4042,44 @@ export type WickMarkets = {
           },
           {
             "name": "no"
+          }
+        ]
+      }
+    },
+    {
+      "name": "slot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "size",
+            "docs": [
+              "Notional in USDC base units (0 = empty)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "collateral",
+            "type": "u64"
+          },
+          {
+            "name": "entryPrice",
+            "type": "i64"
+          },
+          {
+            "name": "borrowIdx",
+            "type": "u128"
+          },
+          {
+            "name": "reserve",
+            "docs": [
+              "Profit the pool reserved for this position."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "openedAt",
+            "type": "i64"
           }
         ]
       }

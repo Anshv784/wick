@@ -28,5 +28,14 @@
       "sbQuote": "JAo4drX9qLn6ZBfLvMPJYW94KdNq9ntsL4MbbEvNyEMF",
       "sbFeedHash": "0x8927ab3f693d1ac1f19d788a82fa1f7c66101855bf482f437446efe2a365d7c3"
     }
+  },
+  "perps": {
+    "pool": "Hi7v64FzYrikVZaN8X7FNz7KSUwGM4wccxAkhxbkpVYJ",
+    "vault": "H28aAbZ4JJmdY8j7QhcfGez6HkesFTtJdRhKitK8N7Gf",
+    "markets": {
+      "SOL": "Fg71TR19qCg9x8aJHGtwjGDSva6LQ2vEegsMYaKRV2oU",
+      "BTC": "N5X9XFsf549JfaQMCHeqtJLBqquCTBMi5PoXBxtzo8q",
+      "ETH": "BiD8KciPQGoqD9ucMeUQrcWZFT5zrXrBD1iTWSWxFnjW"
+    }
   }
 }

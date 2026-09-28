@@ -59,8 +59,8 @@ export default function MarketPage() {
 
   return (
     <div className="pt-8">
-      <Link href="/markets" className="text-[12px] text-muted hover:text-paper">
-        ← All markets
+      <Link href="/predict" className="text-[12px] text-muted hover:text-paper">
+        ← Prediction markets
       </Link>
 
       <div className="mt-4 flex flex-wrap items-end gap-x-10 gap-y-4">

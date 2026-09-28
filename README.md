@@ -215,7 +215,7 @@ A full lifecycle ran against devnet with scripted users:
 programs/wick_markets   perps + LP pool, prediction markets, FPMM pool, touch books, dual-oracle settlement, ER delegation
 programs/wick           Arcium MXE program: sealed batches, hidden stop-losses
 encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order, check_stop
-app                     Next.js frontend: Three.js landing (/), marketplace (/markets), market pages, portfolio, /docs
+app                     Next.js: Three.js landing (/), perps (/trade), LP pool (/earn), prediction markets (/predict), portfolio, docs
 scripts                 setup · keeper · markets (open/discover) · oracles · status · e2e · claim
 ```
 

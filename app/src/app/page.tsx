@@ -42,7 +42,7 @@ export default function Landing() {
 function LaunchButton({ big }: { big?: boolean }) {
   return (
     <Link
-      href="/markets"
+      href="/trade"
       className={`group inline-flex items-center gap-2 rounded-full bg-paper font-semibold text-ink transition hover:bg-white ${big ? "h-14 px-8 text-[16px]" : "h-11 px-5 text-[14px]"}`}
     >
       Launch app
@@ -66,8 +66,8 @@ function Hero() {
         </Link>
         <nav className="hidden items-center gap-6 text-[13px] text-muted md:flex">
           <a href="#perps" className="hover:text-paper">Perps</a>
-          <a href="#modes" className="hover:text-paper">Markets</a>
-          <a href="#settlement" className="hover:text-paper">Settlement</a>
+          <a href="#modes" className="hover:text-paper">Prediction markets</a>
+          <a href="#settlement" className="hover:text-paper">Why Wick</a>
           <Link href="/docs" className="hover:text-paper">Docs</Link>
         </nav>
         <div className="ml-auto">
@@ -114,10 +114,10 @@ function Hero() {
         >
           <LaunchButton big />
           <Link
-            href="/docs"
+            href="/predict"
             className="inline-flex h-14 items-center rounded-full border border-white/12 px-7 text-[15px] text-paper backdrop-blur transition hover:border-white/30"
           >
-            How it works
+            Prediction markets
           </Link>
         </motion.div>
       </div>
@@ -167,13 +167,15 @@ function Perps() {
             your position until two independent oracles agree it should.
           </p>
           <Link
-            href="/perps"
+            href="/trade"
             className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-flame px-6 text-[14px] font-semibold text-ink transition hover:brightness-110"
           >
             Trade perps →
           </Link>
         </motion.div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-3">
+          <PerpTickers />
+          <div className="grid gap-3 sm:grid-cols-2">
           {features.map((f, i) => (
             <motion.div key={f.k} {...fade} transition={{ ...fade.transition, delay: i * 0.08 }} className="panel p-5">
               <div className="num text-[11px] text-flame-2">0{i + 1}</div>
@@ -181,9 +183,34 @@ function Perps() {
               <p className="mt-2 text-[13px] leading-relaxed text-muted">{f.v}</p>
             </motion.div>
           ))}
+          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function PerpTicker({ s }: { s: AssetSymbol }) {
+  const t = useLivePrice(s);
+  return (
+    <Link href="/trade" className="flex-1 rounded-xl bg-ink px-4 py-3 transition hover:bg-white/[0.03]">
+      <div className="flex items-center gap-2 text-[12px] font-semibold">
+        <span className="h-2 w-2 rounded-full" style={{ background: ASSETS[s].color }} />
+        {s}-PERP
+        <span className="num ml-auto rounded bg-flame/10 px-1.5 text-[10px] text-flame-2">50×</span>
+      </div>
+      <div className="num mt-1 text-[18px]">{t ? fmtUsd(t.price) : "—"}</div>
+    </Link>
+  );
+}
+
+function PerpTickers() {
+  return (
+    <motion.div {...fade} className="panel flex flex-wrap gap-2 p-2">
+      {(Object.keys(ASSETS) as AssetSymbol[]).map((s) => (
+        <PerpTicker key={s} s={s} />
+      ))}
+    </motion.div>
   );
 }
 
@@ -193,8 +220,12 @@ function Modes() {
       <motion.div {...fade}>
         <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Prediction markets · three ways in</p>
         <h2 className="font-display mt-3 max-w-2xl text-[48px] leading-[1] tracking-tight sm:text-[64px]">
-          Every question, <em className="text-muted">your way</em>.
+          Or call it, <em className="text-muted">three ways</em>.
         </h2>
+        <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-muted">
+          Every prediction market asks one question: will the price be above the strike at expiry? Trade it on a rollup, bet on
+          the path it takes, or keep your order sealed.
+        </p>
       </motion.div>
       <div className="mt-14 grid gap-4 lg:grid-cols-3">
         <ModeCard
@@ -350,9 +381,9 @@ function LiveStrip() {
         <motion.div {...fade} className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Right now</p>
-            <h2 className="font-display mt-2 text-[40px] leading-none tracking-tight">Live markets</h2>
+            <h2 className="font-display mt-2 text-[40px] leading-none tracking-tight">Live prediction markets</h2>
           </div>
-          <Link href="/markets" className="text-[13px] text-muted hover:text-paper">
+          <Link href="/predict" className="text-[13px] text-muted hover:text-paper">
             All markets →
           </Link>
         </motion.div>
@@ -372,7 +403,7 @@ function MiniMarket({ r, i }: { r: NonNullable<ReturnType<typeof useMarkets>["da
   const left = r.m.data.expiry.toNumber() - Date.now() / 1000;
   return (
     <motion.div {...fade} transition={{ ...fade.transition, delay: i * 0.06 }}>
-      <Link href={`/market/${r.key.toBase58()}`} className="panel block p-5 transition hover:border-line-2 hover:bg-white/[0.03]">
+      <Link href={`/predict/${r.key.toBase58()}`} className="panel block p-5 transition hover:border-line-2 hover:bg-white/[0.03]">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full" style={{ background: q.asset?.color }} />
           <span className="text-[14px] font-semibold">{q.text}</span>
@@ -397,19 +428,19 @@ function Settlement() {
     <section id="settlement" className="mx-auto max-w-[1280px] scroll-mt-10 px-4 py-28 sm:px-6">
       <div className="grid items-center gap-16 lg:grid-cols-2">
         <motion.div {...fade}>
-          <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Settlement</p>
+          <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Why Wick</p>
           <h2 className="font-display mt-3 text-[48px] leading-[1] tracking-tight sm:text-[60px]">
             Two oracles.
             <br />
             <em className="text-muted">One verdict.</em>
           </h2>
           <p className="mt-6 max-w-md text-[16px] leading-relaxed text-muted">
-            Every payout reads a Wormhole-verified Pyth price and an Ed25519-verified Switchboard quote built only from exchange
-            APIs. They must land on the same side of the strike, close together. If they don&apos;t, the market freezes instead of
-            paying the wrong side, and never gets stuck.
+            Every liquidation, settlement and payout reads a Wormhole-verified Pyth price and an Ed25519-verified Switchboard
+            quote built only from exchange APIs. A perp is only liquidated when both agree; a market only settles when both land
+            on the same side of the strike. If they disagree, nothing pays the wrong side.
           </p>
-          <Link href="/docs#settlement" className="mt-8 inline-block text-[14px] text-flame-2 hover:underline">
-            Read the settlement rules →
+          <Link href="/docs#liquidation" className="mt-8 inline-block text-[14px] text-flame-2 hover:underline">
+            Read how it works →
           </Link>
         </motion.div>
         <motion.div {...fade} className="panel relative p-6">
@@ -486,8 +517,14 @@ function FinalCta() {
         <h2 className="font-display mx-auto mt-6 max-w-3xl text-[52px] leading-[1] tracking-tight sm:text-[76px]">
           The market never closes. <em className="text-flame">Neither do the wicks.</em>
         </h2>
-        <div className="mt-10 flex justify-center">
+        <div className="mt-10 flex flex-wrap justify-center gap-3">
           <LaunchButton big />
+          <Link
+            href="/predict"
+            className="inline-flex h-14 items-center rounded-full border border-white/12 px-7 text-[15px] text-paper transition hover:border-white/30"
+          >
+            Prediction markets
+          </Link>
         </div>
         <p className="mt-5 text-[12px] text-faint">Devnet · free test USDC inside</p>
       </motion.div>
@@ -503,12 +540,13 @@ function Footer() {
         <span className="flex items-center gap-2">
           <Logo size={16} /> Wick
         </span>
-        <span className="text-faint">{syms.join(" · ")} markets</span>
+        <span className="text-faint">Perps and prediction markets on {syms.join(" · ")}</span>
         <span className="ml-auto flex gap-5">
-          <Link href="/perps" className="hover:text-paper">Perps</Link>
-          <Link href="/markets" className="hover:text-paper">Markets</Link>
-          <Link href="/docs" className="hover:text-paper">Docs</Link>
+          <Link href="/trade" className="hover:text-paper">Trade</Link>
+          <Link href="/predict" className="hover:text-paper">Predict</Link>
+          <Link href="/earn" className="hover:text-paper">Earn</Link>
           <Link href="/portfolio" className="hover:text-paper">Portfolio</Link>
+          <Link href="/docs" className="hover:text-paper">Docs</Link>
         </span>
       </div>
     </footer>

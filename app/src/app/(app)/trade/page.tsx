@@ -67,7 +67,7 @@ export default function PerpsPage() {
       <div className="flex flex-wrap items-end gap-6">
         <div>
           <p className="num text-[11px] tracking-wide text-flame-2 uppercase">Wick-proof perps</p>
-          <h1 className="font-display mt-1 text-[48px] leading-none tracking-tight">Perpetuals</h1>
+          <h1 className="font-display mt-1 text-[48px] leading-none tracking-tight">Trade</h1>
         </div>
         <div className="ml-auto flex gap-1 rounded-xl border hairline bg-ink p-1">
           {PERP_SYMBOLS.map((s) => (
@@ -498,7 +498,7 @@ function AccountPanel({ perps, refresh }: { perps: Perps; refresh: () => void })
       </div>
       <p className="text-[11px] leading-relaxed text-faint">
         Deposits land once on Solana; after that every trade runs on the rollup. Provide liquidity on the{" "}
-        <Link href="/pool" className="text-flame-2 hover:underline">
+        <Link href="/earn" className="text-flame-2 hover:underline">
           LP pool
         </Link>
         .

@@ -12,11 +12,11 @@ const WalletMultiButton = dynamic(
 );
 
 const links = [
-  { href: "/markets", label: "Markets" },
-  { href: "/perps", label: "Perps" },
-  { href: "/pool", label: "Pool" },
-  { href: "/portfolio", label: "Portfolio" },
-  { href: "/docs", label: "Docs" },
+  { href: "/trade", label: "Trade", match: ["/trade"] },
+  { href: "/predict", label: "Predict", match: ["/predict"] },
+  { href: "/earn", label: "Earn", match: ["/earn"] },
+  { href: "/portfolio", label: "Portfolio", match: ["/portfolio"] },
+  { href: "/docs", label: "Docs", match: ["/docs"] },
 ];
 
 export function Nav() {
@@ -30,7 +30,7 @@ export function Nav() {
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           {links.map((l) => {
-            const active = l.href === "/markets" ? path.startsWith("/market") : path.startsWith(l.href);
+            const active = l.match.some((m) => path.startsWith(m));
             return (
               <Link
                 key={l.href}
@@ -52,7 +52,7 @@ export function Nav() {
       </div>
       <nav className="flex gap-1 overflow-x-auto border-t hairline px-4 py-2 md:hidden">
         {links.map((l) => {
-          const active = l.href === "/markets" ? path.startsWith("/market") : path.startsWith(l.href);
+          const active = l.match.some((m) => path.startsWith(m));
           return (
             <Link
               key={l.href}

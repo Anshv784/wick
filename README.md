@@ -9,7 +9,7 @@ Every payout requires **Pyth and Switchboard to agree**.
 
 </div>
 
-![Wick markets](docs/screens/home.jpg)
+![Wick landing](docs/screens/landing.jpg)
 
 ## What it is
 
@@ -21,9 +21,9 @@ Every Wick market asks one question: *"Will SOL be ≥ $123 at Friday 17:00?"* Y
 | 🔥 | **Touch** | *"Does SOL trade through $125 before expiry?"* Pays the moment it happens | Solana, backed by a house vault |
 | 🔒 | **Sealed** | Encrypted side and size, filled at one clearing price. Nobody sees your order | Arcium MPC |
 
-| Touch bets and the live chart | Sealed batch |
-|---|---|
-| ![Market](docs/screens/market.jpg) | ![Sealed](docs/screens/sealed.jpg) |
+| Marketplace | Touch bets and the live chart | Sealed batch |
+|---|---|---|
+| ![Markets](docs/screens/home.jpg) | ![Market](docs/screens/market.jpg) | ![Sealed](docs/screens/sealed.jpg) |
 
 ## How it works
 
@@ -163,7 +163,7 @@ A full lifecycle ran against devnet with scripted users:
 programs/wick_markets   markets, FPMM pool, touch book, dual-oracle settlement, ER delegation
 programs/wick           Arcium sealed batch (MXE program)
 encrypted-ixs           Arcis circuits: init_totals, place_order, reveal_totals, reveal_order
-app                     Next.js frontend (markets, trading panels, portfolio, /docs)
+app                     Next.js frontend: Three.js landing (/), marketplace (/markets), market pages, portfolio, /docs
 scripts                 setup · keeper · markets (open/discover) · oracles · status · e2e · claim
 ```
 

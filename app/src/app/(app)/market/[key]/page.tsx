@@ -59,7 +59,7 @@ export default function MarketPage() {
 
   return (
     <div className="pt-8">
-      <Link href="/" className="text-[12px] text-muted hover:text-paper">
+      <Link href="/markets" className="text-[12px] text-muted hover:text-paper">
         ← All markets
       </Link>
 

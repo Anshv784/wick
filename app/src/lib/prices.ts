@@ -64,3 +64,36 @@ export async function fetchCandles(symbol: AssetSymbol): Promise<Candle[]> {
   const r = await fetch(`/api/candles?symbol=${symbol}`);
   return r.ok ? r.json() : [];
 }
+
+/**
+ * Latest Switchboard quote for an asset, read straight from its canonical on-chain account
+ * (same layout the program parses: "SBOracle" | queue | u16 len | Ed25519 payload).
+ */
+export function useSwitchboardPrice(symbol: AssetSymbol) {
+  const [price, setPrice] = useState<number>();
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const { baseConn, ORACLES } = await import("./wick");
+      const { PublicKey } = await import("@solana/web3.js");
+      const key = ORACLES?.[symbol]?.sbQuote;
+      if (!key) return;
+      const info = await baseConn.getAccountInfo(new PublicKey(key)).catch(() => null);
+      if (!info || !alive) return;
+      const d = info.data;
+      const len = d.readUInt16LE(40);
+      const ix = d.subarray(42, 42 + len);
+      const msgOff = ix.readUInt16LE(10);
+      const feed = ix.subarray(msgOff + 32, msgOff + 32 + 49);
+      const v = feed.readBigUInt64LE(32) + (feed.readBigInt64LE(40) << 64n);
+      setPrice(Number(v / 10n ** 10n) / 1e8);
+    };
+    load();
+    const t = setInterval(load, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [symbol]);
+  return price;
+}

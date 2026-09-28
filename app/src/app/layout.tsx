@@ -3,7 +3,6 @@ import { Inter_Tight, Instrument_Serif, JetBrains_Mono } from "next/font/google"
 import "./globals.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import { Providers } from "@/components/Providers";
-import { Nav } from "@/components/Nav";
 
 const inter = Inter_Tight({ variable: "--font-inter-tight", subsets: ["latin"] });
 const serif = Instrument_Serif({
@@ -20,14 +19,11 @@ export const metadata: Metadata = {
     "Prediction markets on Solana with touch bets, sealed Arcium batches and dual-oracle settlement.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${serif.variable} ${mono.variable} antialiased`}>
       <body className="grain min-h-screen font-sans">
-        <Providers>
-          <Nav />
-          <main className="mx-auto w-full max-w-[1280px] px-4 pb-24 sm:px-6">{children}</main>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

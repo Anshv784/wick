@@ -61,7 +61,7 @@ export default function MarketPage() {
 
   return (
     <div className="pt-8">
-      <Link href="/predict" className="text-[12px] text-muted hover:text-paper">
+      <Link href="/predictions" className="text-[12px] text-muted hover:text-paper">
         ← Prediction markets
       </Link>
 

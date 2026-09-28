@@ -17,7 +17,7 @@ export default function Home() {
     <div>
       <section className="pt-12">
         <p className="num text-[11px] tracking-wide text-flame-2 uppercase">Prediction markets</p>
-        <h1 className="font-display mt-1 text-[48px] leading-none tracking-tight">Predict</h1>
+        <h1 className="font-display mt-1 text-[48px] leading-none tracking-tight">Predictions</h1>
         <p className="mt-3 max-w-xl text-[14px] text-muted">
           Will the price be above the strike at expiry? Trade YES/NO instantly on MagicBlock, bet on the path with touch tickets,
           or go sealed with Arcium. Every market settles on Pyth and Switchboard agreeing.

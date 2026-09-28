@@ -32,7 +32,7 @@ export function MarketCard({ k, m, i }: { k: PublicKey; m: Located<MarketAccount
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
       <Link
-        href={`/predict/${k.toBase58()}`}
+        href={`/predictions/${k.toBase58()}`}
         className="panel group block p-5 transition hover:border-line-2 hover:bg-white/[0.035]"
       >
         <div className="flex items-center gap-3">

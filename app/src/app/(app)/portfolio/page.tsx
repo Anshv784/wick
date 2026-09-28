@@ -70,7 +70,7 @@ export default function Portfolio() {
           const m = markets.data?.find((r) => r.key.equals(k))?.m;
           const q = m ? marketQuestion(m.data) : null;
           return (
-            <Link key={k.toBase58()} href={`/predict/${k.toBase58()}`} className="flex items-center gap-4 p-4 hover:bg-white/[0.02]">
+            <Link key={k.toBase58()} href={`/predictions/${k.toBase58()}`} className="flex items-center gap-4 p-4 hover:bg-white/[0.02]">
               <div className="flex-1">
                 <div className="text-[14px] font-semibold">{q ? `${q.text} · ${q.when}` : k.toBase58().slice(0, 8)}</div>
                 <div className="num text-[12px] text-muted">
@@ -140,14 +140,14 @@ function PerpsSummary({ perps }: { perps: Perps }) {
       <div className="grid gap-px overflow-hidden rounded-2xl border hairline bg-line sm:grid-cols-3">
         <Stat k="Trading account" v={`$${fmtNum(acc ? acc.credit.toNumber() / 1e6 : 0)}`} />
         <Stat k="Open positions" v={String(rows.length)} />
-        <Stat k="LP value (Earn)" v={`$${fmtNum(lpValue)}`} cls="text-flame" />
+        <Stat k="LP value (Liquidity)" v={`$${fmtNum(lpValue)}`} cls="text-flame" />
       </div>
       <div className="panel mt-4 divide-y divide-line">
         {rows.length === 0 ? (
           <p className="p-6 text-center text-[13px] text-muted">
             No open perp positions.{" "}
-            <Link href="/trade" className="text-flame-2 hover:underline">
-              Trade →
+            <Link href="/perps" className="text-flame-2 hover:underline">
+              Trade perps →
             </Link>
           </p>
         ) : (
@@ -177,7 +177,7 @@ function PerpRow({
   const mark = t?.price ?? entry;
   const p = Math.min(pnl(side, size, entry, mark), slot.reserve.toNumber() / 1e6) - owed;
   return (
-    <Link href="/trade" className="flex items-center gap-4 p-4 text-[13px] hover:bg-white/[0.02]">
+    <Link href="/perps" className="flex items-center gap-4 p-4 text-[13px] hover:bg-white/[0.02]">
       <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${side === "long" ? "bg-yes/15 text-yes" : "bg-no/15 text-no"}`}>
         {side}
       </span>

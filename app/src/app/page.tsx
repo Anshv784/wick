@@ -44,7 +44,7 @@ export default function Landing() {
 function LaunchButton({ big }: { big?: boolean }) {
   return (
     <Link
-      href="/trade"
+      href="/perps"
       className={`group inline-flex items-center gap-2 rounded-full bg-paper font-semibold text-ink transition hover:bg-white ${big ? "h-14 px-8 text-[16px]" : "h-11 px-5 text-[14px]"}`}
     >
       Launch app
@@ -117,7 +117,7 @@ function Hero() {
         >
           <LaunchButton big />
           <Link
-            href="/predict"
+            href="/predictions"
             className="inline-flex h-14 items-center rounded-full border border-white/12 px-7 text-[15px] text-paper backdrop-blur transition hover:border-white/30"
           >
             Prediction markets
@@ -170,7 +170,7 @@ function Perps() {
             your position until two independent oracles agree it should.
           </p>
           <Link
-            href="/trade"
+            href="/perps"
             className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-flame px-6 text-[14px] font-semibold text-ink transition hover:brightness-110"
           >
             Trade perps →
@@ -196,7 +196,7 @@ function Perps() {
 function PerpTicker({ s }: { s: AssetSymbol }) {
   const t = useLivePrice(s);
   return (
-    <Link href="/trade" className="flex-1 rounded-xl bg-ink px-4 py-3 transition hover:bg-white/[0.03]">
+    <Link href="/perps" className="flex-1 rounded-xl bg-ink px-4 py-3 transition hover:bg-white/[0.03]">
       <div className="flex items-center gap-2 text-[12px] font-semibold">
         <span className="h-2 w-2 rounded-full" style={{ background: ASSETS[s].color }} />
         {s}-PERP
@@ -386,7 +386,7 @@ function LiveStrip() {
             <p className="num text-[12px] tracking-wide text-flame-2 uppercase">Right now</p>
             <h2 className="font-display mt-2 text-[40px] leading-none tracking-tight">Live prediction markets</h2>
           </div>
-          <Link href="/predict" className="text-[13px] text-muted hover:text-paper">
+          <Link href="/predictions" className="text-[13px] text-muted hover:text-paper">
             All markets →
           </Link>
         </motion.div>
@@ -406,7 +406,7 @@ function MiniMarket({ r, i }: { r: NonNullable<ReturnType<typeof useMarkets>["da
   const left = r.m.data.expiry.toNumber() - Date.now() / 1000;
   return (
     <motion.div {...fade} transition={{ ...fade.transition, delay: i * 0.06 }}>
-      <Link href={`/predict/${r.key.toBase58()}`} className="panel block p-5 transition hover:border-line-2 hover:bg-white/[0.03]">
+      <Link href={`/predictions/${r.key.toBase58()}`} className="panel block p-5 transition hover:border-line-2 hover:bg-white/[0.03]">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full" style={{ background: q.asset?.color }} />
           <span className="text-[14px] font-semibold">{q.text}</span>
@@ -556,7 +556,7 @@ function FinalCta() {
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           <LaunchButton big />
           <Link
-            href="/predict"
+            href="/predictions"
             className="inline-flex h-14 items-center rounded-full border border-white/12 px-7 text-[15px] text-paper transition hover:border-white/30"
           >
             Prediction markets
@@ -578,9 +578,9 @@ function Footer() {
         </span>
         <span className="text-faint">Perps and prediction markets on {syms.join(" · ")}</span>
         <span className="ml-auto flex gap-5">
-          <Link href="/trade" className="hover:text-paper">Trade</Link>
-          <Link href="/predict" className="hover:text-paper">Predict</Link>
-          <Link href="/earn" className="hover:text-paper">Earn</Link>
+          <Link href="/perps" className="hover:text-paper">Perps</Link>
+          <Link href="/predictions" className="hover:text-paper">Predictions</Link>
+          <Link href="/liquidity" className="hover:text-paper">Liquidity</Link>
           <Link href="/portfolio" className="hover:text-paper">Portfolio</Link>
           <Link href="/docs" className="hover:text-paper">Docs</Link>
         </span>

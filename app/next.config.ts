@@ -7,10 +7,13 @@ const nextConfig: NextConfig = {
   // Old routes from before perps became the lead product.
   async redirects() {
     return [
-      { source: "/markets", destination: "/predict", permanent: false },
-      { source: "/market/:key", destination: "/predict/:key", permanent: false },
-      { source: "/perps", destination: "/trade", permanent: false },
-      { source: "/pool", destination: "/earn", permanent: false },
+      { source: "/trade", destination: "/perps", permanent: false },
+      { source: "/predict", destination: "/predictions", permanent: false },
+      { source: "/predict/:key", destination: "/predictions/:key", permanent: false },
+      { source: "/markets", destination: "/predictions", permanent: false },
+      { source: "/market/:key", destination: "/predictions/:key", permanent: false },
+      { source: "/earn", destination: "/liquidity", permanent: false },
+      { source: "/pool", destination: "/liquidity", permanent: false },
       { source: "/how", destination: "/docs#settlement", permanent: false },
     ];
   },

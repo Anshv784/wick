@@ -46,7 +46,7 @@ export default function PoolPage() {
 
   return (
     <div className="pt-10">
-      <p className="num text-[11px] tracking-wide text-flame-2 uppercase">Earn · perp LP pool</p>
+      <p className="num text-[11px] tracking-wide text-flame-2 uppercase">Liquidity · perp LP pool</p>
       <h1 className="font-display mt-1 text-[52px] leading-none tracking-tight">Be the house</h1>
       <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-muted">
         The LP pool is the counterparty to every perp trade. It earns open, close and borrow fees plus trader losses, and pays
@@ -93,7 +93,7 @@ export default function PoolPage() {
           ) : !acc ? (
             <p className="py-4 text-[13px] leading-relaxed text-muted">
               Deposit USDC into your trading account on the{" "}
-              <Link href="/trade" className="text-flame-2 hover:underline">
+              <Link href="/perps" className="text-flame-2 hover:underline">
                 perps page
               </Link>{" "}
               first. LP deposits come from that balance.
